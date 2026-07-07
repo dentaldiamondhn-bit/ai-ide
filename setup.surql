@@ -1,0 +1,10 @@
+REMOVE TABLE settings;
+REMOVE TABLE chats;
+DEFINE TABLE settings SCHEMALESS;
+DEFINE INDEX settings_key ON settings FIELDS key UNIQUE;
+DEFINE TABLE chats SCHEMALESS;
+DEFINE INDEX chats_id ON chats FIELDS id UNIQUE;
+CREATE settings:app_settings SET key = "app_settings", value = { theme: "dark", fontSize: 14, tabSize: 2, wordWrap: false, showLineNumbers: true, autoSave: false };
+CREATE chats:welcome SET id = "welcome", title = "Welcome Chat", messages = [ { role: "assistant", content: "Welcome! How can I help you today?" } ], created_at = time::now(), updated_at = time::now();
+SELECT * FROM settings;
+SELECT * FROM chats;

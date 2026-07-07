@@ -11,7 +11,6 @@ import TerminalPanel from '@/components/TerminalPanel'
 import TopMenuBar from '@/components/TopMenuBar'
 import ActivityBar from '@/components/ActivityBar'
 import VSCodePanel from '@/components/VSCodePanel'
-import AuthGuard from '@/components/AuthGuard'
 
 interface Tab {
   id: string
@@ -199,7 +198,6 @@ export default function IDEPage() {
   }
 
   return (
-    <AuthGuard>
     <div className="h-screen w-screen flex flex-col bg-neutral-950 text-zinc-200 overflow-hidden select-none">
       <TopMenuBar 
         onSave={handleSaveFile} 
@@ -387,6 +385,5 @@ export default function IDEPage() {
         </div>
       </footer>
     </div>
-    </AuthGuard>
   )
 }

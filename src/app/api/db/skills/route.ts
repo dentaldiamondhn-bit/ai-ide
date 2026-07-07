@@ -1,5 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase'
-import { auth } from '@clerk/nextjs/server'
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const id = searchParams.get('id')
@@ -26,8 +26,6 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    let userId: string | null = null
-    try { ({ userId } = await auth()) } catch {}
     const body = await request.json()
     const { data, error } = await supabaseAdmin.from('skills').insert({
       name: body.name,
@@ -36,7 +34,7 @@ export async function POST(request: Request) {
       category: body.category || '',
       tags: body.tags || [],
       is_public: body.is_public ?? true,
-      created_by: userId || body.created_by || '00000000-0000-0000-0000-000000000000',
+      created_by: body.created_by || '00000000-0000-0000-0000-000000000000',
       version: 1,
     }).select().single()
     if (error) return Response.json({ error: error.message }, { status: 400 })

@@ -8,11 +8,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import dynamic from 'next/dynamic'
 import { PanelLeft, PanelRight, Terminal, PanelTop } from 'lucide-react'
-import { dark } from '@clerk/themes'
-
-const UserButton = dynamic(() => import('@clerk/nextjs').then(m => m.UserButton), { ssr: false })
 
 interface TopMenuBarProps {
   onSave?: () => void
@@ -310,15 +306,6 @@ export default function TopMenuBar({ onSave, activeFilePath, fileTreePath, onNew
       </div>
       
       <div className="flex items-center gap-1">
-        <UserButton
-          appearance={{
-            baseTheme: dark,
-            elements: {
-              userButtonAvatarBox: 'w-5 h-5',
-              userButtonTrigger: 'focus:shadow-none',
-            },
-          } as any}
-        />
         <button
           onClick={onToggleSidebar}
           className={`p-1.5 rounded transition-colors ${showSidebar ? 'text-zinc-200 hover:text-white hover:bg-zinc-700' : 'text-zinc-500 hover:text-zinc-300'}`}

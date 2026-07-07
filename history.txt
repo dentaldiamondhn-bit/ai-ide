@@ -1,0 +1,20 @@
+#V2
+-- Create settings table
+DEFINE TABLE settings SCHEMAFULL;
+DEFINE FIELD key ON settings TYPE string;
+DEFINE FIELD value ON settings TYPE object;
+DEFINE INDEX settings_key ON settings FIELDS key UNIQUE;
+-- Create chats table
+DEFINE TABLE chats SCHEMAFULL;
+DEFINE FIELD id ON chats TYPE string;
+DEFINE FIELD title ON chats TYPE string;
+DEFINE FIELD messages ON chats TYPE array;
+DEFINE FIELD created_at ON chats TYPE datetime;
+DEFINE FIELD updated_at ON chats TYPE datetime;
+DEFINE INDEX chats_id ON chats FIELDS id UNIQUE;
+-- Insert default settings
+CREATE settings SET key = 'app_settings', value = {  theme: 'dark',  fontSize: 14,  tabSize: 2,  wordWrap: false,  showLineNumbers: true,  autoSave: false};
+-- Create a sample chat
+CREATE chats SET id = 'welcome', title = 'Welcome Chat', messages = [  { role: 'assistant', content: 'Welcome! How can I help you today?', createdAt: time::now() }], created_at = time::now(), updated_at = time::now();
+SELECT * FROM settings;
+SELECT * FROM chats;

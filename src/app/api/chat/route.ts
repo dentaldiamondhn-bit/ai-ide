@@ -6,7 +6,6 @@ import axios from 'axios'
 import DiffMatchPatch from 'diff-match-patch'
 import jscodeshift from 'jscodeshift'
 import { supabaseAdmin } from '@/lib/supabase'
-import { auth } from '@clerk/nextjs/server'
 
 const execPromise = util.promisify(exec)
 const NVIDIA_API_URL = 'https://integrate.api.nvidia.com/v1/chat/completions'
@@ -293,7 +292,7 @@ interface ToolOutput {
   animationData?: AnimationData[]
 }
 
-async function executeTool(name: string, args: Record<string, unknown>, workspaceRoot?: string, onOutput?: (text: string) => void, clerkUserId?: string | null): Promise<ToolOutput> {
+async function executeTool(name: string, args: Record<string, unknown>, workspaceRoot?: string, onOutput?: (text: string) => void): Promise<ToolOutput> {
   const result: ToolOutput = { output: "", filesModified: [], commandsRun: [], insertions: 0, deletions: 0 }
   const root = workspaceRoot || WORKSPACE_ROOT
   const resolvePath = (p: string) => path.isAbsolute(p) ? p : path.join(root, p)
@@ -326,7 +325,7 @@ async function executeTool(name: string, args: Record<string, unknown>, workspac
     result.output = `Wrote ${newLines.length} lines to ${args.path}`
     result.filesModified.push(args.path as string)
     result.animationData = [{ path: args.path as string, insertions: result.insertions, deletions: result.deletions }]
-    syncSkillToSupabase(filePath, clerkUserId)
+    syncSkillToSupabase(filePath)
   } else if (name === "run_command") {
     let cmd = args.command as string
     let workdir = args.workdir ? (path.isAbsolute(args.workdir as string) ? args.workdir as string : path.join(root, args.workdir as string)) : root
@@ -519,7 +518,7 @@ async function executeTool(name: string, args: Record<string, unknown>, workspac
         ''
       ].join('\n')
       await fs.writeFile(path.join(skillDir, 'SKILL.md'), frontmatter + prompt, 'utf-8')
-      await syncSkillToSupabase(path.join(skillDir, 'SKILL.md'), clerkUserId)
+      await syncSkillToSupabase(path.join(skillDir, 'SKILL.md'))
       result.output = `Skill "${name}" created and persisted to database.`
       result.filesModified.push(`.agents/skills/${slug}/SKILL.md`)
     } catch (err: any) {
@@ -721,7 +720,7 @@ async function streamLLM(messages: any[], skillInject: string | undefined, model
   }
 }
 
-async function runAgent(messages: any[], send: (d: any) => void, stepId: string, model?: string, skillInject?: string, workspaceRoot?: string, isContinuation?: boolean, clerkUserId?: string | null) {
+async function runAgent(messages: any[], send: (d: any) => void, stepId: string, model?: string, skillInject?: string, workspaceRoot?: string, isContinuation?: boolean) {
   const conversation = [...messages]
   const allFiles: string[] = []
   const allCommands: string[] = []
@@ -763,7 +762,7 @@ async function runAgent(messages: any[], send: (d: any) => void, stepId: string,
       const reasoningDuration = Date.now() - stepStart
       send({ type: "tool_call", name: call.function.name, args: parsedArgs, reasoning, reasoningDuration, stepId })
       const sendOutput = call.function.name === 'run_command' ? (text: string) => send({ type: "tool_output", content: text, stepId }) : undefined
-      const toolResult = await executeTool(call.function.name, parsedArgs, workspaceRoot, sendOutput, clerkUserId)
+      const toolResult = await executeTool(call.function.name, parsedArgs, workspaceRoot, sendOutput)
       allFiles.push(...toolResult.filesModified)
       allCommands.push(...toolResult.commandsRun)
       send({ type: "tool_result", name: call.function.name, args: parsedArgs, output: toolResult.output, filesModified: toolResult.filesModified, commandsRun: toolResult.commandsRun, insertions: toolResult.insertions, deletions: toolResult.deletions, animationData: toolResult.animationData, stepId })
@@ -782,8 +781,6 @@ async function loadSkillContent(skillName: string): Promise<string> {
 }
 
 export async function POST(request: Request) {
-  let userId: string | null = null
-  try { ({ userId } = await auth()) } catch {} // Clerk may not be configured
   const { messages, skill, model, fileTreePath, activeFilePath } = await request.json()
   if (!messages || !Array.isArray(messages)) {
     return new Response(JSON.stringify({ error: "Invalid messages" }) + "\n", {
@@ -821,7 +818,7 @@ export async function POST(request: Request) {
           typeof messages[messages.length - 1].content === 'string' &&
           messages[messages.length - 1].content.includes('Continue from where you left off')
 
-        await runAgent(messages, send, stepId, model, skillInject, workspaceRoot, isContinuation, userId)
+        await runAgent(messages, send, stepId, model, skillInject, workspaceRoot, isContinuation)
       } catch (err: any) {
         const detail = err?.error?.message || err?.error || (err?.response?.data ? JSON.stringify(err.response.data) : '')
         send({ type: "error", content: detail ? `${err.message}: ${detail}` : (err.message || "Internal error"), stepId })
