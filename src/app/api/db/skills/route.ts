@@ -26,7 +26,8 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { userId } = await auth()
+    let userId: string | null = null
+    try { ({ userId } = await auth()) } catch {}
     const body = await request.json()
     const { data, error } = await supabaseAdmin.from('skills').insert({
       name: body.name,

@@ -782,7 +782,8 @@ async function loadSkillContent(skillName: string): Promise<string> {
 }
 
 export async function POST(request: Request) {
-  const { userId } = await auth()
+  let userId: string | null = null
+  try { ({ userId } = await auth()) } catch {} // Clerk may not be configured
   const { messages, skill, model, fileTreePath, activeFilePath } = await request.json()
   if (!messages || !Array.isArray(messages)) {
     return new Response(JSON.stringify({ error: "Invalid messages" }) + "\n", {
