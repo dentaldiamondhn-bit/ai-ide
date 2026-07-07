@@ -23,7 +23,7 @@ interface ExecutionEvent {
 }
 
 interface Message {
-  role: 'user' | 'assistant'
+  role: 'user' | 'assistant' | 'tool'
   content: string
   isExecuting?: boolean
   events?: ExecutionEvent[]
@@ -33,6 +33,9 @@ interface Message {
   reasoning?: string
   executionDuration?: number
   model?: string
+  tool_calls?: { id: string; type: string; function: { name: string; arguments: string } }[]
+  tool_call_id?: string
+  name?: string
 }
 
 interface HistorySnapshot {
