@@ -1,4 +1,5 @@
 import fs from 'fs/promises'
+import type { Dirent } from 'fs'
 import path from 'path'
 
 const SKILLS_DIR = path.join(process.cwd(), '.agents', 'skills')
@@ -40,7 +41,7 @@ export async function GET(request: Request) {
       }
     }
 
-    let dirs: fs.Dirent[] = []
+    let dirs: Dirent[] = []
     try {
       const entries = await fs.readdir(SKILLS_DIR, { withFileTypes: true })
       dirs = entries.filter(e => e.isDirectory() && !e.name.startsWith('.'))
