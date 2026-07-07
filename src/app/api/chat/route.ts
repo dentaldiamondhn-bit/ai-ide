@@ -10,7 +10,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 const execPromise = util.promisify(exec)
 const NVIDIA_API_URL = 'https://integrate.api.nvidia.com/v1/chat/completions'
 
-const MAX_AGENT_STEPS = 100
+const MAX_AGENT_STEPS = 20
 const MAX_CONVERSATION_TOKENS = 120000
 const WORKSPACE_ROOT = process.cwd()
 
@@ -133,9 +133,11 @@ RULES:
 9. Prefer npx over global npm installs.
 10. Keep responses concise — the step output shows what you did.
 11. If a tool fails, diagnose the error and retry with a different approach.
-12. Before each tool call, explain your reasoning step by step in text. Your analysis and thought process should be visible before you take any action.
+12. Be concise. Write 1-2 sentences of reasoning max before each tool call, then immediately make the call. Do NOT write long analysis paragraphs. Act, don't narrate.
 13. For file edits, prefer using edit_file (targeted search-and-replace) over write_file. Never use sed, awk, perl, or python to edit files — always use the edit_file or write_file tools instead.
-14. Use create_skill to persist reusable instructions, patterns, or workflows to the skills database. Use delete_skill to remove them. These tools dual-write to both the local filesystem and Supabase for persistence across sessions.`
+14. Use create_skill to persist reusable instructions, patterns, or workflows to the skills database. Use delete_skill to remove them. These tools dual-write to both the local filesystem and Supabase for persistence across sessions.
+15. NEVER repeat the same analysis or re-read the same file you already read. If you have the information, use it and move forward.
+16. Maximum 3 tool calls per response. If the task needs more, complete the first 3 steps and let the user know what's next.`
 
 const TOOLS = [
   {
@@ -600,6 +602,41 @@ const NVIDIA_MODEL_CONFIG: Record<string, { envKey: string; supportsTools: boole
     supportsTools: true,
     payload: { max_tokens: 16384, temperature: 0.60, top_p: 0.95 },
   },
+  'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning': {
+    envKey: 'NVIDIA_API_KEY_NEMOTRON_NANO',
+    supportsTools: true,
+    payload: { max_tokens: 65536, temperature: 0.6, top_p: 0.95, reasoning_budget: 16384, chat_template_kwargs: { enable_thinking: true } },
+  },
+  'stepfun-ai/step-3.5-flash': {
+    envKey: 'NVIDIA_API_KEY_STEP_35',
+    supportsTools: true,
+    payload: { max_tokens: 16384, temperature: 1, top_p: 0.9 },
+  },
+  'mistralai/mistral-nemotron': {
+    envKey: 'NVIDIA_API_KEY_MISTRAL_NEMOTRON',
+    supportsTools: false,
+    payload: { max_tokens: 4096, temperature: 0.6, top_p: 0.7 },
+  },
+  'nvidia/nemotron-ocr-v2': {
+    envKey: 'NVIDIA_API_KEY_NEMOTRON_OCR',
+    supportsTools: false,
+    payload: { max_tokens: 4096, temperature: 0.6, top_p: 0.7 },
+  },
+  'nvidia/chatterbox-multilingual-tts': {
+    envKey: 'NVIDIA_API_KEY_CHATTERBOX_TTS',
+    supportsTools: false,
+    payload: { max_tokens: 4096 },
+  },
+  'qwen/qwen-image': {
+    envKey: 'NVIDIA_API_KEY_QWEN_IMAGE',
+    supportsTools: false,
+    payload: { max_tokens: 4096 },
+  },
+  'qwen/qwen-image-edit': {
+    envKey: 'NVIDIA_API_KEY_QWEN_IMAGE_EDIT',
+    supportsTools: false,
+    payload: { max_tokens: 4096 },
+  },
 }
 
 async function callNVIDIA(messages: any[], forceTools?: boolean, skillInject?: string, modelId?: string) {
@@ -630,7 +667,8 @@ async function callNVIDIA(messages: any[], forceTools?: boolean, skillInject?: s
     })
     return res.data
   } catch (err: any) {
-    const msg = err?.response?.data?.error?.message || err?.message || ''
+    const raw = err?.response?.data
+    const msg = raw?.error?.message || raw?.detail || err?.message || ''
     const status = err?.response?.status
     if (status === 400 && (msg.includes('tool_use_failed') || msg.includes('not support') || msg.includes('tool_calls') || msg.includes('tool choice'))) {
       delete payload.tools; delete payload.tool_choice
@@ -642,6 +680,15 @@ async function callNVIDIA(messages: any[], forceTools?: boolean, skillInject?: s
         }
       })
       return res.data
+    }
+    if (status === 400 && msg.includes('DEGRADED')) {
+      throw new Error(`The model "${mid}" is temporarily unavailable (DEGRADED). Please try a different model or retry in a few seconds.`)
+    }
+    if (status === 429) {
+      throw new Error(`Rate limited by NVIDIA. Please wait a moment and retry.`)
+    }
+    if (status && status >= 500) {
+      throw new Error(`NVIDIA server error (${status}). Please retry in a moment.`)
     }
     throw err
   }
@@ -664,7 +711,18 @@ async function streamNVIDIA(messages: any[], skillInject: string | undefined, mo
   const res = await fetch(NVIDIA_API_URL, {
     method: 'POST', headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
   })
-  if (!res.ok) throw new Error(`NVIDIA streaming error: ${res.status}`)
+  if (!res.ok) {
+    let errBody: any = {}
+    try { errBody = await res.json() } catch {}
+    const errMsg = errBody?.error?.message || errBody?.detail || `NVIDIA streaming error: ${res.status}`
+    if (res.status === 400 && errMsg.includes('DEGRADED')) {
+      throw new Error(`The model "${mid}" is temporarily unavailable (DEGRADED). Please try a different model or retry in a few seconds.`)
+    }
+    if (res.status === 429) {
+      throw new Error(`Rate limited by NVIDIA. Please wait a moment and retry.`)
+    }
+    throw new Error(errMsg)
+  }
 
   const reader = res.body!.getReader()
   const decoder = new TextDecoder()
@@ -705,19 +763,44 @@ async function streamNVIDIA(messages: any[], skillInject: string | undefined, mo
 }
 
 async function streamLLM(messages: any[], skillInject: string | undefined, modelId: string | undefined, onToken: (text: string) => void): Promise<{ content: string; toolCalls: any[] }> {
-  try {
-    return await streamNVIDIA(messages, skillInject, modelId, onToken)
-  } catch (err) {
-    console.error('Streaming failed, falling back to non-streaming:', err)
+  const isTransient = (err: any) => {
+    const msg = String(err?.message || '')
+    return msg.includes('DEGRADED') || msg.includes('429') || msg.includes('rate limit') || msg.includes('503') || msg.includes('502')
+  }
+  const delay = (ms: number) => new Promise(r => setTimeout(r, ms))
+
+  for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const response = await callLLM(messages, skillInject, modelId)
-      const msg = response.choices[0].message
-      return { content: msg.content || '', toolCalls: msg.tool_calls || [] }
-    } catch (fallbackErr: any) {
-      console.error('Non-streaming fallback also failed:', fallbackErr)
-      throw fallbackErr
+      return await streamNVIDIA(messages, skillInject, modelId, onToken)
+    } catch (err) {
+      if (isTransient(err) && attempt === 0) {
+        console.warn(`NVIDIA transient error (attempt ${attempt + 1}), retrying in 2s:`, (err as Error).message)
+        await delay(2000)
+        continue
+      }
+      console.error('Streaming failed, falling back to non-streaming:', err)
+      try {
+        const response = await callLLM(messages, skillInject, modelId)
+        const msg = response.choices[0].message
+        return { content: msg.content || '', toolCalls: msg.tool_calls || [] }
+      } catch (fallbackErr: any) {
+        if (isTransient(fallbackErr)) {
+          console.warn('Non-streaming also transient, one last retry after 3s')
+          await delay(3000)
+          try {
+            const response = await callLLM(messages, skillInject, modelId)
+            const msg = response.choices[0].message
+            return { content: msg.content || '', toolCalls: msg.tool_calls || [] }
+          } catch (lastErr: any) {
+            throw lastErr
+          }
+        }
+        console.error('Non-streaming fallback also failed:', fallbackErr)
+        throw fallbackErr
+      }
     }
   }
+  throw new Error('Unexpected end of LLM retry loop')
 }
 
 async function runAgent(messages: any[], send: (d: any) => void, stepId: string, model?: string, skillInject?: string, workspaceRoot?: string, isContinuation?: boolean) {
@@ -732,8 +815,8 @@ async function runAgent(messages: any[], send: (d: any) => void, stepId: string,
     const stepStart = Date.now()
 
     const reasoningPrompt = isContinuation
-      ? "You were interrupted mid-task. Continue from where you left off. Do not re-read files or re-run commands you already did. Resume the task using your existing knowledge. Before taking any action, first explain your reasoning step by step in detail. Then make the tool calls needed."
-      : "Before taking any action, first explain your reasoning step by step in detail. Then make the tool calls needed."
+      ? "Continue from where you left off. Do not re-read files or re-run commands. Resume immediately with tool calls."
+      : "Take action now. Write 1-2 sentences max, then make the tool calls. Do not write long explanations."
 
     const result = await streamLLM(
       [

@@ -5,7 +5,7 @@ import {
   Send, Bot, ChevronDown, X, Loader2, Square,
   FileText, FileEdit, Terminal, CheckCircle2, AlertCircle, ChevronRight, Search,
   Copy, Check, Sparkles, MoreHorizontal, MessageSquare, Clock,
-  User, Code2, Plus, History, PanelRight, Zap, Trash2, Lightbulb, ChevronLeft
+  User, Code2, Plus, History, PanelRight, Zap, Trash2, Lightbulb, ChevronLeft, Paperclip
 } from 'lucide-react'
 
 interface ExecutionEvent {
@@ -220,6 +220,7 @@ export default function ChatPanel({ onRefreshFileTree, onReloadFile, onFileModif
   const latestInput = useRef('')
   latestInput.current = input
   const bottomRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const executionStartRef = useRef(0)
@@ -234,6 +235,12 @@ export default function ChatPanel({ onRefreshFileTree, onReloadFile, onFileModif
   const [historyIndex, setHistoryIndex] = useState(-1)
   const [undoModalOpen, setUndoModalOpen] = useState(false)
   const [pendingUndoIndex, setPendingUndoIndex] = useState(-1)
+  const [attachedFiles, setAttachedFiles] = useState<{name: string; path: string; content: string}[]>([])
+  const [showFilePicker, setShowFilePicker] = useState(false)
+  const fileBtnRef = useRef<HTMLButtonElement>(null)
+  const [fileDropPos, setFileDropPos] = useState<{top: number; left: number}>({top: 0, left: 0})
+  const [filePickerSearch, setFilePickerSearch] = useState('')
+  const [filePickerFiles, setFilePickerFiles] = useState<{name: string; path: string; type: string}[]>([])
 
   const pushHistory = useCallback((msgs: Message[], inp: string) => {
     setHistoryStack(prevStack => {
@@ -325,7 +332,13 @@ export default function ChatPanel({ onRefreshFileTree, onReloadFile, onFileModif
   }, [chatId])
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const container = scrollContainerRef.current
+    if (!container) { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); return }
+    const threshold = 150
+    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < threshold
+    if (isNearBottom) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
   }, [messages, currentStatus])
 
   const refreshUI = useCallback((allFiles: string[], activeFile: string | null | undefined) => {
@@ -340,29 +353,126 @@ export default function ChatPanel({ onRefreshFileTree, onReloadFile, onFileModif
     if (shouldReload && activeFile) onReloadFile?.(activeFile)
   }, [onRefreshFileTree, onReloadFile])
 
-  const [skills, setSkills] = useState<string[]>([])
+  const [skills, setSkills] = useState<{name: string; description: string; category: string; tags: string[]}[]>([])
+  const [categories, setCategories] = useState<{name: string; count: number}[]>([])
   const selectedSkill = skillProp ?? ''
   const [showSkillDropdown, setShowSkillDropdown] = useState(false)
+  const skillBtnRef = useRef<HTMLButtonElement>(null)
+  const [skillDropPos, setSkillDropPos] = useState<{top: number; left: number}>({top: 0, left: 0})
   const [skillSearch, setSkillSearch] = useState('')
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set())
+  const [recentSkills, setRecentSkills] = useState<string[]>([])
 
   const [models, setModels] = useState<{id: string; name: string; provider: string}[]>([])
   const [showModelDropdown, setShowModelDropdown] = useState(false)
+  const modelBtnRef = useRef<HTMLButtonElement>(null)
+  const [modelDropPos, setModelDropPos] = useState<{top: number; left: number}>({top: 0, left: 0})
   const selectedModel = modelProp || 'minimaxai/minimax-m3'
   const setSelectedModel = onModelChange || (() => {})
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('recentSkills')
+      if (stored) setRecentSkills(JSON.parse(stored))
+    } catch {}
+  }, [])
+
+  const addRecentSkill = useCallback((name: string) => {
+    setRecentSkills(prev => {
+      const next = [name, ...prev.filter(s => s !== name)].slice(0, 5)
+      localStorage.setItem('recentSkills', JSON.stringify(next))
+      return next
+    })
+  }, [])
 
   useEffect(() => {
     fetch('/api/skills')
       .then(r => r.json())
       .then(data => {
-        if (data.skills) setSkills(data.skills.map((s: any) => s.name))
+        if (data.skills) setSkills(data.skills)
+        if (data.categories) setCategories(data.categories)
         if (data.models) setModels(data.models)
       })
       .catch(() => {})
   }, [])
 
+  const skillSearchLower = skillSearch.toLowerCase()
   const filteredSkills = skillSearch
-    ? skills.filter(s => s.toLowerCase().includes(skillSearch.toLowerCase()))
+    ? skills.filter(s =>
+        s.name.toLowerCase().includes(skillSearchLower) ||
+        s.description.toLowerCase().includes(skillSearchLower) ||
+        s.category.toLowerCase().includes(skillSearchLower) ||
+        s.tags.some(t => t.toLowerCase().includes(skillSearchLower))
+      )
     : skills
+
+  const filteredByCategory = filteredSkills.reduce<Record<string, typeof filteredSkills>>((acc, skill) => {
+    const cat = skill.category || 'uncategorized'
+    if (!acc[cat]) acc[cat] = []
+    acc[cat].push(skill)
+    return acc
+  }, {})
+
+  const sortedCategoryNames = Object.keys(filteredByCategory).sort((a, b) => {
+    if (a === 'uncategorized') return 1
+    if (b === 'uncategorized') return -1
+    return a.localeCompare(b)
+  })
+
+  const toggleCategory = useCallback((cat: string) => {
+    setCollapsedCategories(prev => {
+      const next = new Set(prev)
+      if (next.has(cat)) next.delete(cat)
+      else next.add(cat)
+      return next
+    })
+  }, [])
+
+  const recentSkillObjects = recentSkills
+    .map(name => skills.find(s => s.name === name))
+    .filter(Boolean) as typeof skills
+
+  useEffect(() => {
+    if (!showFilePicker) return
+    const root = fileTreePath || ''
+    fetch(`/api/files?path=${encodeURIComponent(root)}`)
+      .then(r => r.json())
+      .then(data => {
+        const flatten = (nodes: any[], prefix = ''): {name: string; path: string; type: string}[] => {
+          const result: {name: string; path: string; type: string}[] = []
+          for (const n of nodes || []) {
+            if (n.name.startsWith('.') || n.name === 'node_modules') continue
+            if (n.isDirectory) {
+              result.push(...flatten(n.children || [], prefix + n.name + '/'))
+            } else {
+              result.push({ name: n.name, path: n.path, type: 'file' })
+            }
+          }
+          return result
+        }
+        setFilePickerFiles(flatten(data.tree || []))
+      })
+      .catch(() => {})
+  }, [showFilePicker, fileTreePath])
+
+  const filteredFilePickerFiles = filePickerSearch
+    ? filePickerFiles.filter(f => f.name.toLowerCase().includes(filePickerSearch.toLowerCase()) || f.path.toLowerCase().includes(filePickerSearch.toLowerCase()))
+    : filePickerFiles
+
+  const attachFile = useCallback(async (filePath: string, fileName: string) => {
+    if (attachedFiles.some(f => f.path === filePath)) return
+    try {
+      const res = await fetch(`/api/files?action=read&path=${encodeURIComponent(filePath)}`)
+      const data = await res.json()
+      setAttachedFiles(prev => [...prev, { name: fileName, path: filePath, content: data.content || '' }])
+    } catch {}
+    setShowFilePicker(false)
+    setFilePickerSearch('')
+  }, [attachedFiles])
+
+  const detachFile = useCallback((filePath: string) => {
+    setAttachedFiles(prev => prev.filter(f => f.path !== filePath))
+  }, [])
 
   const currentModel = models.find(m => m.id === selectedModel)
 
@@ -371,11 +481,17 @@ export default function ChatPanel({ onRefreshFileTree, onReloadFile, onFileModif
 
     pushHistory(messages, input)
 
-    const userMessage: Message = { role: 'user', content: prompt }
+    let fullContent = prompt
+    if (attachedFiles.length > 0) {
+      const fileSections = attachedFiles.map(f => `\n\n--- FILE: ${f.path} ---\n${f.content}\n--- END: ${f.path} ---`)
+      fullContent = prompt + fileSections.join('')
+    }
+    const userMessage: Message = { role: 'user', content: fullContent }
     const execMessage: Message = { role: 'assistant', content: '', isExecuting: true, events: [], model: selectedModel }
 
     setMessages(prev => [...prev, userMessage, execMessage])
     setLoading(true)
+    setAttachedFiles([])
     setCurrentStatus('Thinking...')
     executionStartRef.current = Date.now()
 
@@ -564,12 +680,18 @@ export default function ChatPanel({ onRefreshFileTree, onReloadFile, onFileModif
 
     pushHistory(messages, input)
 
-    const userMessage: Message = { role: 'user', content: input }
+    let fullContent = input
+    if (attachedFiles.length > 0) {
+      const fileSections = attachedFiles.map(f => `\n\n--- FILE: ${f.path} ---\n${f.content}\n--- END: ${f.path} ---`)
+      fullContent = input + fileSections.join('')
+    }
+    const userMessage: Message = { role: 'user', content: fullContent }
     const execMessage: Message = { role: 'assistant', content: '', isExecuting: true, events: [], model: selectedModel }
 
     setMessages(prev => [...prev, userMessage, execMessage])
     setLoading(true)
     setInput('')
+    setAttachedFiles([])
     setCurrentStatus('Thinking...')
     executionStartRef.current = Date.now()
 
@@ -855,7 +977,7 @@ setMessages(prev => {
   ) : null
 
   return (
-    <div className="flex flex-col h-full bg-zinc-950">
+    <div className="flex flex-col h-full bg-zinc-950 min-w-0">
       {/* Header */}
       <div className="h-10 bg-zinc-950 border-b border-zinc-800/50 flex items-center justify-between px-3 shrink-0">
         <div className="flex items-center gap-2">
@@ -911,7 +1033,7 @@ setMessages(prev => {
       )}
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto scroll-smooth">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto scroll-smooth">
         {redoBadge}
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full px-6 text-center">
@@ -1070,6 +1192,19 @@ setMessages(prev => {
       {/* Input area */}
       <div className="px-3 pb-3 pt-2 bg-zinc-950 border-t border-zinc-800/30">
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 focus-within:border-zinc-600/60 transition-all shadow-sm">
+          {attachedFiles.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 px-3 pt-2.5">
+              {attachedFiles.map(f => (
+                <span key={f.path} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-zinc-800 text-[11px] text-zinc-300 border border-zinc-700">
+                  <FileText size={10} className="text-zinc-500 shrink-0" />
+                  <span className="truncate max-w-[120px]">{f.name}</span>
+                  <button onClick={() => detachFile(f.path)} className="text-zinc-500 hover:text-zinc-300 ml-0.5">
+                    <X size={10} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
 <textarea
               ref={inputRef}
               value={input}
@@ -1089,7 +1224,16 @@ setMessages(prev => {
               {/* Model selector */}
               <div className="relative">
                 <button
-                  onClick={() => setShowModelDropdown(!showModelDropdown)}
+                  ref={modelBtnRef}
+                  onClick={() => {
+                    if (!showModelDropdown && modelBtnRef.current) {
+                      const r = modelBtnRef.current.getBoundingClientRect()
+                      const dropW = 224
+                      const left = r.left + dropW > window.innerWidth ? window.innerWidth - dropW - 8 : r.left
+                      setModelDropPos({ top: r.top - 4, left })
+                    }
+                    setShowModelDropdown(!showModelDropdown)
+                  }}
                   className="text-[10px] px-2 py-1 rounded-md bg-zinc-800/60 text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800 transition-colors flex items-center gap-1.5"
                 >
                   <img src={getModelDisplay(selectedModel)} className="w-3.5 h-3.5 shrink-0" alt="" />
@@ -1099,7 +1243,7 @@ setMessages(prev => {
                 {showModelDropdown && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setShowModelDropdown(false)} />
-                    <div className="absolute bottom-full left-0 mb-1.5 z-50 w-56 bg-zinc-900 border border-zinc-800 rounded-lg shadow-2xl py-1 max-h-60 overflow-y-auto">
+                    <div className="fixed z-50 w-56 bg-zinc-900 border border-zinc-800 rounded-lg shadow-2xl py-1 max-h-60 overflow-y-auto" style={{ top: modelDropPos.top, left: modelDropPos.left, transform: 'translateY(-100%)' }}>
                       {models.map(m => (
                         <button
                           key={m.id}
@@ -1121,7 +1265,16 @@ setMessages(prev => {
               {/* Skill selector */}
               <div className="relative">
                 <button
-                  onClick={() => setShowSkillDropdown(!showSkillDropdown)}
+                  ref={skillBtnRef}
+                  onClick={() => {
+                    if (!showSkillDropdown && skillBtnRef.current) {
+                      const r = skillBtnRef.current.getBoundingClientRect()
+                      const dropW = 320
+                      const left = r.left + dropW > window.innerWidth ? window.innerWidth - dropW - 8 : r.left
+                      setSkillDropPos({ top: r.top - 4, left })
+                    }
+                    setShowSkillDropdown(!showSkillDropdown)
+                  }}
                   className={`text-[10px] px-2 py-1 rounded-md transition-colors flex items-center gap-1.5 ${
                     selectedSkill
                       ? 'bg-sky-500/15 text-sky-300 border border-sky-500/20'
@@ -1134,19 +1287,25 @@ setMessages(prev => {
                 </button>
                 {showSkillDropdown && (
                   <>
-                    <div className="fixed inset-0 z-40" onClick={() => setShowSkillDropdown(false)} />
-                    <div className="absolute bottom-full left-0 mb-1.5 z-50 w-72 bg-zinc-900 border border-zinc-800 rounded-lg shadow-2xl max-h-80 flex flex-col">
+                    <div className="fixed inset-0 z-40" onClick={() => { setShowSkillDropdown(false); setSkillSearch('') }} />
+                    <div className="fixed z-50 w-80 bg-zinc-900 border border-zinc-800 rounded-lg shadow-2xl max-h-[420px] flex flex-col" style={{ top: skillDropPos.top, left: skillDropPos.left, transform: 'translateY(-100%)' }}>
                       <div className="flex items-center gap-2 px-3 py-2 border-b border-zinc-800">
                         <Search size={12} className="text-zinc-500 shrink-0" />
                         <input
                           value={skillSearch}
                           onChange={e => setSkillSearch(e.target.value)}
-                          placeholder="Search skills..."
+                          placeholder="Search by name, description, category, tag..."
                           className="bg-transparent border-none outline-none text-xs text-zinc-200 w-full placeholder:text-zinc-600"
                           autoFocus
                         />
+                        {skillSearch && (
+                          <button onClick={() => setSkillSearch('')} className="text-zinc-500 hover:text-zinc-300">
+                            <X size={12} />
+                          </button>
+                        )}
                       </div>
                       <div className="overflow-y-auto flex-1">
+                        {/* Clear skill */}
                         <button
                           onClick={() => { onSkillChange?.(''); setShowSkillDropdown(false); setSkillSearch('') }}
                           className={`w-full text-left px-3 py-1.5 text-xs transition-colors hover:bg-zinc-800 flex items-center gap-2 ${
@@ -1155,20 +1314,134 @@ setMessages(prev => {
                         >
                           Default (no skill)
                         </button>
-                        {filteredSkills.slice(0, 200).map(name => (
-                          <button
-                            key={name}
-                            onClick={() => { onSkillChange?.(name); setShowSkillDropdown(false); setSkillSearch('') }}
-                            className={`w-full text-left px-3 py-1.5 text-xs transition-colors hover:bg-zinc-800 truncate ${
-                              selectedSkill === name ? 'text-sky-300 bg-sky-500/10' : 'text-zinc-400'
-                            }`}
-                          >
-                            {name}
-                          </button>
-                        ))}
-                        {filteredSkills.length > 200 && (
+
+                        {/* Recently used */}
+                        {!skillSearch && recentSkillObjects.length > 0 && (
+                          <>
+                            <div className="px-3 pt-2 pb-1 text-[10px] text-zinc-600 font-medium uppercase tracking-wider flex items-center gap-1.5">
+                              <Clock size={10} /> Recent
+                            </div>
+                            {recentSkillObjects.map(skill => (
+                              <button
+                                key={`recent-${skill.name}`}
+                                onClick={() => { onSkillChange?.(skill.name); addRecentSkill(skill.name); setShowSkillDropdown(false); setSkillSearch('') }}
+                                className={`w-full text-left px-3 py-1.5 text-xs transition-colors hover:bg-zinc-800 ${
+                                  selectedSkill === skill.name ? 'text-sky-300 bg-sky-500/10' : 'text-zinc-400'
+                                }`}
+                              >
+                                <div className="truncate">{skill.name}</div>
+                                {skill.description && <div className="text-[10px] text-zinc-600 truncate mt-0.5">{skill.description}</div>}
+                              </button>
+                            ))}
+                            <div className="mx-3 border-b border-zinc-800/50" />
+                          </>
+                        )}
+
+                        {/* Categorized skills */}
+                        {sortedCategoryNames.length === 0 && (
+                          <div className="px-3 py-4 text-xs text-zinc-600 text-center">No skills found</div>
+                        )}
+                        {sortedCategoryNames.map(cat => {
+                          const isCollapsed = collapsedCategories.has(cat) && !!skillSearch === false
+                          const catSkills = filteredByCategory[cat]
+                          return (
+                            <div key={cat}>
+                              <button
+                                onClick={() => toggleCategory(cat)}
+                                className="w-full text-left px-3 py-1.5 text-[10px] font-medium text-zinc-500 uppercase tracking-wider hover:bg-zinc-800/50 flex items-center gap-1.5 sticky top-0 bg-zinc-900/95 backdrop-blur-sm"
+                              >
+                                <ChevronRight size={10} className={`transition-transform ${isCollapsed ? '' : 'rotate-90'}`} />
+                                <span className="truncate">{cat}</span>
+                                <span className="ml-auto text-zinc-700 font-normal normal-case">{catSkills.length}</span>
+                              </button>
+                              {!isCollapsed && catSkills.map(skill => (
+                                <button
+                                  key={skill.name}
+                                  onClick={() => { onSkillChange?.(skill.name); addRecentSkill(skill.name); setShowSkillDropdown(false); setSkillSearch('') }}
+                                  className={`w-full text-left px-3 pl-6 py-1.5 text-xs transition-colors hover:bg-zinc-800 ${
+                                    selectedSkill === skill.name ? 'text-sky-300 bg-sky-500/10' : 'text-zinc-400'
+                                  }`}
+                                >
+                                  <div className="truncate">{skill.name}</div>
+                                  {skill.description && (
+                                    <div className="text-[10px] text-zinc-600 truncate mt-0.5 max-w-full">{skill.description}</div>
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+                          )
+                        })}
+                        {filteredSkills.length > 0 && (
                           <div className="px-3 py-2 text-[10px] text-zinc-600 text-center border-t border-zinc-800">
-                            Showing first 200 of {filteredSkills.length} skills
+                            {filteredSkills.length} of {skills.length} skills
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Attach file */}
+              <div className="relative">
+                <button
+                  ref={fileBtnRef}
+                  onClick={() => {
+                    if (!showFilePicker && fileBtnRef.current) {
+                      const r = fileBtnRef.current.getBoundingClientRect()
+                      const dropW = 288
+                      const left = r.left + dropW > window.innerWidth ? window.innerWidth - dropW - 8 : r.left
+                      setFileDropPos({ top: r.top - 4, left })
+                    }
+                    setShowFilePicker(!showFilePicker)
+                  }}
+                  className="text-[10px] px-2 py-1 rounded-md bg-zinc-800/60 text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800 transition-colors flex items-center gap-1.5"
+                  title="Attach file"
+                >
+                  <Paperclip size={11} />
+                </button>
+                {showFilePicker && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => { setShowFilePicker(false); setFilePickerSearch('') }} />
+                    <div className="fixed z-50 w-72 bg-zinc-900 border border-zinc-800 rounded-lg shadow-2xl max-h-[320px] flex flex-col" style={{ top: fileDropPos.top, left: fileDropPos.left, transform: 'translateY(-100%)' }}>
+                      <div className="flex items-center gap-2 px-3 py-2 border-b border-zinc-800">
+                        <Search size={12} className="text-zinc-500 shrink-0" />
+                        <input
+                          value={filePickerSearch}
+                          onChange={e => setFilePickerSearch(e.target.value)}
+                          placeholder="Search files..."
+                          className="bg-transparent border-none outline-none text-xs text-zinc-200 w-full placeholder:text-zinc-600"
+                          autoFocus
+                        />
+                        {filePickerSearch && (
+                          <button onClick={() => setFilePickerSearch('')} className="text-zinc-500 hover:text-zinc-300">
+                            <X size={12} />
+                          </button>
+                        )}
+                      </div>
+                      <div className="overflow-y-auto flex-1">
+                        {filteredFilePickerFiles.length === 0 && (
+                          <div className="px-3 py-4 text-xs text-zinc-600 text-center">No files found</div>
+                        )}
+                        {filteredFilePickerFiles.slice(0, 100).map(f => {
+                          const isAttached = attachedFiles.some(a => a.path === f.path)
+                          return (
+                            <button
+                              key={f.path}
+                              onClick={() => !isAttached && attachFile(f.path, f.name)}
+                              className={`w-full text-left px-3 py-1.5 text-xs transition-colors hover:bg-zinc-800 flex items-center gap-2 ${
+                                isAttached ? 'text-sky-400 bg-sky-500/5' : 'text-zinc-400'
+                              }`}
+                            >
+                              <FileText size={11} className={isAttached ? 'text-sky-400' : 'text-zinc-600'} />
+                              <span className="truncate">{f.name}</span>
+                              {isAttached && <Check size={10} className="ml-auto text-sky-400" />}
+                            </button>
+                          )
+                        })}
+                        {filteredFilePickerFiles.length > 100 && (
+                          <div className="px-3 py-2 text-[10px] text-zinc-600 text-center border-t border-zinc-800">
+                            Showing 100 of {filteredFilePickerFiles.length} files
                           </div>
                         )}
                       </div>
