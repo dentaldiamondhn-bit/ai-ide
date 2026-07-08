@@ -623,7 +623,15 @@ export default function ChatPanel({ onRefreshFileTree, onReloadFile, onFileModif
               })
               setCurrentStatus('')
             } else if (event.type === 'error') {
-              throw new Error(event.content as string)
+              const errMsg = (event.content as string) || 'Unknown error occurred'
+              setMessages(prev => {
+                const updated: Message[] = [...prev, { role: 'assistant' as const, content: `**Error:** ${errMsg}` }]
+                setTimeout(() => saveConversation(updated), 100)
+                return updated
+              })
+              setCurrentStatus('')
+              setLoading(false)
+              return
             }
           } catch (e: any) {
             if (e.message !== "Unexpected end of JSON input") {
@@ -823,7 +831,15 @@ export default function ChatPanel({ onRefreshFileTree, onReloadFile, onFileModif
               })
               setCurrentStatus('')
             } else if (event.type === 'error') {
-              throw new Error(event.content as string)
+              const errMsg = (event.content as string) || 'Unknown error occurred'
+              setMessages(prev => {
+                const updated: Message[] = [...prev, { role: 'assistant' as const, content: `**Error:** ${errMsg}` }]
+                setTimeout(() => saveConversation(updated), 100)
+                return updated
+              })
+              setCurrentStatus('')
+              setLoading(false)
+              return
             }
           } catch (e: any) {
             if (e.message !== "Unexpected end of JSON input") {
