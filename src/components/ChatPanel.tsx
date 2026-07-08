@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import {
   Send, Bot, ChevronDown, X, Loader2, Square,
   FileText, FileEdit, Terminal, CheckCircle2, AlertCircle, ChevronRight, Search,
@@ -357,6 +357,23 @@ export default function ChatPanel({ onRefreshFileTree, onReloadFile, onFileModif
   const [categories, setCategories] = useState<{name: string; count: number}[]>([])
   const selectedSkill = skillProp ?? ''
   const [showSkillDropdown, setShowSkillDropdown] = useState(false)
+
+  const estimateTokens = (text: string) => Math.ceil(text.length / 3.5)
+  const MAX_TOKENS = 120000
+
+  const tokenCount = useMemo(() => {
+    const systemPromptLen = 2000
+    const msgTokens = messages.reduce((sum, m) => {
+      const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
+      return sum + estimateTokens(content)
+    }, 0)
+    const inputTokens = estimateTokens(input)
+    return systemPromptLen + msgTokens + inputTokens
+  }, [messages, input])
+
+  const tokenPct = Math.min((tokenCount / MAX_TOKENS) * 100, 100)
+  const tokenColor = tokenPct > 90 ? 'bg-rose-500' : tokenPct > 70 ? 'bg-amber-500' : 'bg-emerald-500'
+  const tokenTextColor = tokenPct > 90 ? 'text-rose-400' : tokenPct > 70 ? 'text-amber-400' : 'text-zinc-500'
   const skillBtnRef = useRef<HTMLButtonElement>(null)
   const [skillDropPos, setSkillDropPos] = useState<{top: number; left: number}>({top: 0, left: 0})
   const [skillSearch, setSkillSearch] = useState('')
@@ -1235,6 +1252,17 @@ setMessages(prev => {
               className="w-full bg-transparent border-none outline-none text-sm text-zinc-200 px-4 py-3 resize-y min-h-[42px] max-h-[300px] placeholder:text-zinc-600"
               rows={1}
             />
+
+          {/* Token counter */}
+          <div className="px-3 flex items-center gap-2">
+            <div className="flex-1 h-0.5 bg-zinc-800 rounded-full overflow-hidden">
+              <div className={`h-full rounded-full transition-all duration-300 ${tokenColor}`} style={{ width: `${tokenPct}%` }} />
+            </div>
+            <span className={`text-[10px] tabular-nums ${tokenTextColor}`}>
+              {(tokenCount / 1000).toFixed(1)}k / {(MAX_TOKENS / 1000).toFixed(0)}k
+            </span>
+          </div>
+
           <div className="flex items-center justify-between px-3 pb-2.5">
             <div className="flex items-center gap-1.5">
               {/* Model selector */}
