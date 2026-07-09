@@ -11,6 +11,7 @@ import TerminalPanel from '@/components/TerminalPanel'
 import TopMenuBar from '@/components/TopMenuBar'
 import ActivityBar from '@/components/ActivityBar'
 import SourceControlPanel from '@/components/SourceControlPanel'
+import SearchPanel from '@/components/SearchPanel'
 import VSCodePanel from '@/components/VSCodePanel'
 
 function getFileTabIcon(fileName: string) {
@@ -280,6 +281,10 @@ export default function IDEPage() {
                   <div className="flex-1 overflow-y-auto">
                     {activeActivityTab === 'git' ? (
                       <SourceControlPanel />
+                    ) : activeActivityTab === 'search' ? (
+                      <SearchPanel onSelectFile={(path, line) => {
+                        handleSelectFile(path)
+                      }} />
                     ) : (
                       settingsLoaded && <FileTree key={fileTreeKey} startPath={fileTreePath} activeFilePath={activeTabContent?.path || null} onFileSelect={handleSelectFile} onRefresh={handleRefreshFileTree} lintResults={lintResults} />
                     )}
