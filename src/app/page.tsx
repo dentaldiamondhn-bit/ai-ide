@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels'
-import { PanelLeft, PanelRight, Terminal, PanelBottom } from 'lucide-react'
+import { PanelLeft, PanelRight, Terminal, PanelBottom, ChevronRight, FileCode, FileText, Hash, Braces, FileType, Coffee, FileJson, FileImage, Settings, Code2 } from 'lucide-react'
 import FileTree from '@/components/FileTree'
 import CodeEditor from '@/components/CodeEditor'
 import ChatPanel from '@/components/ChatPanel'
@@ -11,6 +11,46 @@ import TerminalPanel from '@/components/TerminalPanel'
 import TopMenuBar from '@/components/TopMenuBar'
 import ActivityBar from '@/components/ActivityBar'
 import VSCodePanel from '@/components/VSCodePanel'
+
+function getFileTabIcon(fileName: string) {
+  const ext = fileName.split('.').pop()?.toLowerCase()
+  switch (ext) {
+    case 'tsx': case 'jsx': return <FileCode size={13} className="text-sky-400" />
+    case 'ts': case 'js': return <FileCode size={13} className="text-amber-400" />
+    case 'css': case 'scss': case 'less': return <Hash size={13} className="text-teal-400" />
+    case 'json': return <Braces size={13} className="text-yellow-500" />
+    case 'md': case 'mdx': return <FileText size={13} className="text-zinc-400" />
+    case 'py': return <Coffee size={13} className="text-blue-400" />
+    case 'rs': return <FileCode size={13} className="text-orange-400" />
+    case 'go': return <FileCode size={13} className="text-cyan-400" />
+    case 'java': case 'kt': return <FileCode size={13} className="text-red-400" />
+    case 'html': case 'htm': case 'vue': case 'svelte': return <FileCode size={13} className="text-orange-300" />
+    case 'svg': case 'png': case 'jpg': case 'jpeg': case 'gif': case 'webp': return <FileImage size={13} className="text-purple-400" />
+    case 'yaml': case 'yml': case 'toml': case 'ini': return <Settings size={13} className="text-zinc-400" />
+    case 'sh': case 'bash': case 'zsh': return <Terminal size={13} className="text-emerald-400" />
+    case 'sql': return <FileText size={13} className="text-blue-300" />
+    case 'xml': return <Code2 size={13} className="text-amber-300" />
+    case 'lock': return <FileType size={13} className="text-zinc-500" />
+    default: return <FileText size={13} className="text-zinc-400" />
+  }
+}
+
+function Breadcrumbs({ activePath }: { activePath: string }) {
+  const cleanPath = activePath.replace(/^\/home\/[^/]+\//, '')
+  const segments = cleanPath.split('/').filter(Boolean)
+  return (
+    <div className="h-6 px-3 border-b border-zinc-800/50 bg-zinc-950/30 flex items-center gap-1 text-[11px] text-zinc-500 font-mono shrink-0 overflow-x-auto">
+      {segments.map((seg, i) => (
+        <span key={i} className="flex items-center gap-1">
+          {i > 0 && <ChevronRight size={10} className="text-zinc-600 shrink-0" />}
+          <span className={`hover:text-zinc-300 cursor-pointer transition-colors truncate max-w-[140px] ${i === segments.length - 1 ? 'text-zinc-300' : ''}`}>
+            {seg}
+          </span>
+        </span>
+      ))}
+    </div>
+  )
+}
 
 interface Tab {
   id: string
@@ -259,8 +299,8 @@ export default function IDEPage() {
                             }`}
                             onClick={() => setActiveTabId(tab.id)}
                           >
-                            <span className="w-4 h-4 flex items-center justify-center rounded text-[9px] font-bold uppercase bg-zinc-800 text-zinc-400 shrink-0">
-                              {tab.language?.slice(0, 2) || 'TX'}
+                            <span className="shrink-0">
+                              {getFileTabIcon(tab.name)}
                             </span>
                             <span className="truncate max-w-[120px]">{tab.name}</span>
                             {(() => {
@@ -288,9 +328,7 @@ export default function IDEPage() {
                       </div>
                     </div>
                     {activeTabContent && (
-                      <div className="h-6 px-3 border-b border-zinc-800/50 bg-zinc-950/30 flex items-center text-[11px] text-zinc-500 font-mono shrink-0 overflow-x-auto">
-                        <span className="truncate">{activeTabContent.path}</span>
-                      </div>
+                      <Breadcrumbs activePath={activeTabContent.path} />
                     )}
                     <div className="flex-1 overflow-hidden">
                       {useVSCode ? (
@@ -373,15 +411,14 @@ export default function IDEPage() {
       <footer className="h-6 w-full bg-zinc-900 border-t border-zinc-800 flex items-center justify-between px-3 text-xs text-zinc-400">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-1">
-            <span>main</span>
+            <span className="text-zinc-500">⎇</span>
+            <span>{activeTabContent ? (activeTabContent.language || 'text') : 'main'}</span>
           </div>
-          <span>✓ Merged</span>
         </div>
         <div className="flex items-center gap-4">
           <span>UTF-8</span>
-          <span>Line 1, Col 1</span>
-          <span>TypeScript</span>
-          <span>0 Problems</span>
+          <span>{activeTabContent ? activeTabContent.language || 'Plain' : ''}</span>
+          <span>{Object.values(lintResults).reduce((sum, l) => sum + l.errors + l.warnings, 0)} Problems</span>
         </div>
       </footer>
     </div>

@@ -243,6 +243,8 @@ export default function FileTree({ onFileSelect, onRefresh, startPath, activeFil
   const [rootPath, setRootPath] = useState<string>('')
   const [parentPath, setParentPath] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [gitStatuses, setGitStatuses] = useState<Record<string, string>>({})
+  const [gitBranch, setGitBranch] = useState('')
 
   const fetchTree = async (pathTarget?: string) => {
     setLoading(true)
@@ -262,13 +264,24 @@ export default function FileTree({ onFileSelect, onRefresh, startPath, activeFil
     }
   }
 
+  const fetchGitStatus = async () => {
+    try {
+      const res = await fetch('/api/git/status')
+      const data = await res.json()
+      setGitStatuses(data.statuses || {})
+      setGitBranch(data.branch || '')
+    } catch {}
+  }
+
   useEffect(() => {
     if (startPath) fetchTree(startPath)
     else fetchTree()
+    fetchGitStatus()
   }, [startPath])
 
   const handleRefresh = () => {
     fetchTree()
+    fetchGitStatus()
     onRefresh?.()
   }
 
@@ -317,15 +330,15 @@ export default function FileTree({ onFileSelect, onRefresh, startPath, activeFil
             <span className="truncate text-xs">..</span>
           </div>
         )}
-{tree.filter(n => !excludedDirs.includes(n.name)).map((node) => (
-            <NodeItem key={node.path} node={node} onFileSelect={onFileSelect} onRefresh={handleRefresh} depth={0} activeFilePath={activeFilePath} lintResults={lintResults} />
+        {tree.filter(n => !excludedDirs.includes(n.name)).map((node) => (
+            <NodeItem key={node.path} node={node} onFileSelect={onFileSelect} onRefresh={handleRefresh} depth={0} activeFilePath={activeFilePath} lintResults={lintResults} gitStatuses={gitStatuses} />
           ))}
       </div>
     </div>
   )
 }
 
-function NodeItem({ node, onFileSelect, onRefresh, depth, activeFilePath, lintResults }: { node: FileNode; onFileSelect: (p: string) => void; onRefresh: () => void; depth: number; activeFilePath?: string | null; lintResults?: Record<string, { errors: number; warnings: number }> }) {
+function NodeItem({ node, onFileSelect, onRefresh, depth, activeFilePath, lintResults, gitStatuses }: { node: FileNode; onFileSelect: (p: string) => void; onRefresh: () => void; depth: number; activeFilePath?: string | null; lintResults?: Record<string, { errors: number; warnings: number }>; gitStatuses?: Record<string, string> }) {
   const [isOpen, setIsOpen] = useState(false)
 
   const handleClick = () => {
@@ -394,6 +407,11 @@ function NodeItem({ node, onFileSelect, onRefresh, depth, activeFilePath, lintRe
   const isActive = !node.isDirectory && activeFilePath === node.path
   const Icon = fileIconDef.icon
 
+  const gitStatus = !node.isDirectory ? gitStatuses?.[node.path] : undefined
+  const gitTextColor = gitStatus === 'modified' ? 'text-amber-400' : gitStatus === 'untracked' ? 'text-emerald-400' : gitStatus === 'ignored' ? 'text-zinc-600' : ''
+  const gitBadge = gitStatus === 'modified' ? 'M' : gitStatus === 'untracked' ? 'U' : ''
+  const gitBadgeColor = gitStatus === 'modified' ? 'bg-amber-500/15 text-amber-400' : gitStatus === 'untracked' ? 'bg-emerald-500/15 text-emerald-400' : ''
+
   return (
     <ContextMenu>
       <ContextMenuTrigger>
@@ -414,9 +432,14 @@ function NodeItem({ node, onFileSelect, onRefresh, depth, activeFilePath, lintRe
             <Icon size={16} />
           </span>
 
-          <span className={`truncate text-xs font-medium tracking-wide ${isActive ? 'text-white' : 'text-zinc-300 group-hover:text-zinc-100'}`}>
+          <span className={`truncate text-xs font-medium tracking-wide ${isActive ? 'text-white' : gitTextColor || 'text-zinc-300 group-hover:text-zinc-100'}`}>
             {node.name}
           </span>
+          {gitBadge && (
+            <span className={`ml-auto mr-0.5 min-w-[14px] h-3.5 px-1 flex items-center justify-center rounded text-[8px] font-bold leading-none ${gitBadgeColor}`}>
+              {gitBadge}
+            </span>
+          )}
           {!node.isDirectory && (() => {
             const lint = lintResults?.[node.path]
             if (!lint || (lint.errors === 0 && lint.warnings === 0)) return null
@@ -465,7 +488,7 @@ function NodeItem({ node, onFileSelect, onRefresh, depth, activeFilePath, lintRe
       {node.isDirectory && isOpen && node.children && (
         <div className="relative">
           {node.children.filter((n: FileNode) => !excludedDirs.includes(n.name)).map((child: FileNode) => (
-            <NodeItem key={child.path} node={child} onFileSelect={onFileSelect} onRefresh={onRefresh} depth={depth + 1} activeFilePath={activeFilePath} lintResults={lintResults} />
+            <NodeItem key={child.path} node={child} onFileSelect={onFileSelect} onRefresh={onRefresh} depth={depth + 1} activeFilePath={activeFilePath} lintResults={lintResults} gitStatuses={gitStatuses} />
           ))}
         </div>
       )}

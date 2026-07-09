@@ -59,3 +59,23 @@ html, body {
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
   background-color: #626262;
 }
+
+/* Monaco gutter diff decorations */
+.diff-line-added {
+  background: #22c55e;
+  width: 4px !important;
+  margin-left: 2px;
+  border-radius: 2px;
+}
+.diff-line-modified {
+  background: #f59e0b;
+  width: 4px !important;
+  margin-left: 2px;
+  border-radius: 2px;
+}
+.diff-line-deleted {
+  background: #ef4444;
+  width: 4px !important;
+  margin-left: 2px;
+  border-radius: 2px;
+}
