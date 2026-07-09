@@ -10,6 +10,7 @@ import type { FileModificationEvent } from '@/hooks/useEditorAnimation'
 import TerminalPanel from '@/components/TerminalPanel'
 import TopMenuBar from '@/components/TopMenuBar'
 import ActivityBar from '@/components/ActivityBar'
+import SourceControlPanel from '@/components/SourceControlPanel'
 import VSCodePanel from '@/components/VSCodePanel'
 
 function getFileTabIcon(fileName: string) {
@@ -75,6 +76,7 @@ export default function IDEPage() {
   const [lintResults, setLintResults] = useState<Record<string, { errors: number; warnings: number }>>({})
   const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [animEvent, setAnimEvent] = useState<FileModificationEvent | null>(null)
+  const [activeActivityTab, setActiveActivityTab] = useState('files')
   const activeTabContent = tabs.find(t => t.id === activeTabId)
 
   const triggerLint = useCallback(async (filePath: string, content?: string) => {
@@ -268,7 +270,7 @@ export default function IDEPage() {
       />
 
       <div className="flex-1 min-h-0 w-full flex">
-        <ActivityBar />
+        <ActivityBar activeTab={activeActivityTab} onTabChange={setActiveActivityTab} />
         
         <div className="flex-1 min-h-0 overflow-hidden">
           <PanelGroup direction="horizontal" autoSaveId="ide-layout">
@@ -276,7 +278,11 @@ export default function IDEPage() {
               <>
                 <Panel id="sidebar" order={1} defaultSize={15} minSize={10} maxSize={30} className="overflow-hidden bg-zinc-950/50 flex flex-col">
                   <div className="flex-1 overflow-y-auto">
-                    {settingsLoaded && <FileTree key={fileTreeKey} startPath={fileTreePath} activeFilePath={activeTabContent?.path || null} onFileSelect={handleSelectFile} onRefresh={handleRefreshFileTree} lintResults={lintResults} />}
+                    {activeActivityTab === 'git' ? (
+                      <SourceControlPanel />
+                    ) : (
+                      settingsLoaded && <FileTree key={fileTreeKey} startPath={fileTreePath} activeFilePath={activeTabContent?.path || null} onFileSelect={handleSelectFile} onRefresh={handleRefreshFileTree} lintResults={lintResults} />
+                    )}
                   </div>
                 </Panel>
                 <PanelResizeHandle className="w-1 bg-zinc-900 hover:bg-zinc-800 transition-colors cursor-col-resize" />

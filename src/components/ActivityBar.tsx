@@ -1,22 +1,23 @@
 'use client'
 
-import { useState } from 'react'
-import { 
-  Files, 
-  Search, 
-  GitBranch, 
-  Map, 
-  BookOpen, 
-  Blocks, 
-  Play, 
+import {
+  Files,
+  Search,
+  GitBranch,
+  Map,
+  BookOpen,
+  Blocks,
+  Play,
   Settings,
-  Terminal
 } from 'lucide-react'
 import { cn } from "@/lib/utils"
 
-export default function ActivityBar() {
-  const [activeTab, setActiveTab] = useState('files')
+interface ActivityBarProps {
+  activeTab: string
+  onTabChange: (tab: string) => void
+}
 
+export default function ActivityBar({ activeTab, onTabChange }: ActivityBarProps) {
   const navItems = [
     { id: 'files', icon: Files, label: 'Explorer' },
     { id: 'search', icon: Search, label: 'Global Search' },
@@ -29,7 +30,6 @@ export default function ActivityBar() {
 
   return (
     <aside className="w-12 h-full bg-zinc-950 border-r border-zinc-900 flex flex-col justify-between items-center py-2 select-none">
-      {/* Top Section: Navigation Icons */}
       <div className="flex flex-col w-full items-center gap-1">
         {navItems.map((item) => {
           const Icon = item.icon
@@ -37,14 +37,13 @@ export default function ActivityBar() {
           return (
             <button
               key={item.id}
-              onClick={() => setActiveTab(item.id)}
+              onClick={() => onTabChange(item.id)}
               title={item.label}
               className={cn(
                 "w-full py-3 flex items-center justify-center relative transition-colors group",
                 isSelected ? "text-sky-400" : "text-zinc-500 hover:text-zinc-200"
               )}
             >
-              {/* Active indicator bar on the left edge */}
               {isSelected && (
                 <div className="absolute left-0 top-0 bottom-0 w-[2px] bg-sky-400" />
               )}
@@ -54,7 +53,6 @@ export default function ActivityBar() {
         })}
       </div>
 
-      {/* Bottom Section: Preferences / Configuration */}
       <div className="flex flex-col w-full items-center gap-1">
         <button title="Settings" className="w-full py-3 flex items-center justify-center text-zinc-500 hover:text-zinc-200 transition-colors">
           <Settings size={18} strokeWidth={1.5} />

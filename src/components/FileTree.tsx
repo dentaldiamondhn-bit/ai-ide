@@ -266,9 +266,15 @@ export default function FileTree({ onFileSelect, onRefresh, startPath, activeFil
 
   const fetchGitStatus = async () => {
     try {
-      const res = await fetch('/api/git/status')
+      const res = await fetch('/api/git?action=status')
       const data = await res.json()
-      setGitStatuses(data.statuses || {})
+      const statusMap: Record<string, string> = {}
+      for (const change of (data.changes || [])) {
+        if (change.type === 'untracked') statusMap[change.path] = 'untracked'
+        else if (change.type === 'deleted') statusMap[change.path] = 'ignored'
+        else statusMap[change.path] = 'modified'
+      }
+      setGitStatuses(statusMap)
       setGitBranch(data.branch || '')
     } catch {}
   }
