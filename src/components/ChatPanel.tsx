@@ -6,7 +6,7 @@ import {
   FileText, FileEdit, Terminal, CheckCircle2, AlertCircle, ChevronRight, Search,
   Copy, Check, Sparkles, MoreHorizontal, MessageSquare, Clock,
   User, Code2, Plus, History, PanelRight, Zap, Trash2, Lightbulb, ChevronLeft, Paperclip,
-  Layers, FolderOpen, Camera, AlertTriangle, Braces, Wrench
+  Layers, FolderOpen, Camera, AlertTriangle, Braces, Wrench, FolderPlus
 } from 'lucide-react'
 
 interface ExecutionEvent {
@@ -42,6 +42,7 @@ interface Message {
 interface HistorySnapshot {
   messages: Message[]
   input: string
+  chatId: string
 }
 
 interface FileModificationEvent {
@@ -207,12 +208,6 @@ function getModelDisplay(modelId: string) {
   if (id.includes('glm')) return '/icons/zhipu.svg'
   if (id.includes('step')) return '/icons/stepfun.svg'
   return '/icons/deepseek.svg'
-}
-
-interface HistorySnapshot {
-  messages: Message[]
-  input: string
-  chatId: string
 }
 
 export default function ChatPanel({ onRefreshFileTree, onReloadFile, onFileModified, activeFilePath, fileTreePath, selectedModel: modelProp, onModelChange, selectedSkill: skillProp, onSkillChange, openTabs = [], lintResults = {} }: ChatPanelProps) {
@@ -516,6 +511,59 @@ export default function ChatPanel({ onRefreshFileTree, onReloadFile, onFileModif
       }])
     }
     reader.readAsDataURL(file)
+    setShowFilePicker(false)
+    setPickerView('main')
+  }
+
+  const handleNativeFilesUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files) return
+    Array.from(files).forEach(file => {
+      const reader = new FileReader()
+      const isImage = file.type.startsWith('image/')
+      reader.onload = () => {
+        setAttachedFiles(prev => {
+          if (prev.some(f => f.path === file.name)) return prev
+          return [...prev, {
+            name: isImage ? `📸 ${file.name}` : `📄 ${file.name}`,
+            path: file.name,
+            content: reader.result as string
+          }]
+        })
+      }
+      if (isImage) {
+        reader.readAsDataURL(file)
+      } else {
+        reader.readAsText(file)
+      }
+    })
+    setShowFilePicker(false)
+    setPickerView('main')
+  }
+
+  const handleNativeFolderUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files) return
+    Array.from(files).forEach(file => {
+      const path = file.webkitRelativePath || file.name
+      const reader = new FileReader()
+      const isImage = file.type.startsWith('image/')
+      reader.onload = () => {
+        setAttachedFiles(prev => {
+          if (prev.some(f => f.path === path)) return prev
+          return [...prev, {
+            name: isImage ? `📸 ${file.name}` : `📁 ${path}`,
+            path: path,
+            content: reader.result as string
+          }]
+        })
+      }
+      if (isImage) {
+        reader.readAsDataURL(file)
+      } else {
+        reader.readAsText(file)
+      }
+    })
     setShowFilePicker(false)
     setPickerView('main')
   }
@@ -898,15 +946,15 @@ export default function ChatPanel({ onRefreshFileTree, onReloadFile, onFileModif
       refreshUI(finalFiles, activeFilePath)
     } catch (err: any) {
       if (err.name === 'AbortError') {
-setMessages(prev => {
-        const last = prev[prev.length - 1]
-        if (last?.isExecuting) {
-          const updated: Message[] = [...prev.slice(0, -1), { role: 'assistant' as const, content: 'Stopped by user.', events: last.events, model: last.model }]
-          setTimeout(() => saveConversation(updated), 100)
-          return updated
-        }
-        return prev
-      })
+        setMessages(prev => {
+          const last = prev[prev.length - 1]
+          if (last?.isExecuting) {
+            const updated: Message[] = [...prev.slice(0, -1), { role: 'assistant' as const, content: 'Stopped by user.', events: last.events, model: last.model }]
+            setTimeout(() => saveConversation(updated), 100)
+            return updated
+          }
+          return prev
+        })
         setCurrentStatus('')
         setLoading(false)
         abortRef.current = null
@@ -989,26 +1037,26 @@ setMessages(prev => {
 
   const redoCount = historyIndex >= 0 ? historyStack.length - historyIndex - 1 : 0
 
-    const redoBadge = redoCount > 0 ? (
-      <div className="mb-3 flex items-center gap-2 p-2 bg-amber-500/10 border border-amber-500/20 rounded-lg">
-        <History size={14} className="text-amber-400" />
-        <span className="text-xs text-amber-300 font-mono">
-          {redoCount} message{redoCount > 1 ? 's' : ''} undone
-        </span>
-        <button
-          onClick={redoLast}
-          className="px-2 py-1 text-xs bg-amber-500 hover:bg-amber-400 text-zinc-950 rounded transition-colors"
-        >
-          Redo All
-        </button>
-        <button
-          onClick={redo}
-          className="px-2 py-1 text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded transition-colors"
-        >
-          Redo Last
-        </button>
-      </div>
-    ) : null
+  const redoBadge = redoCount > 0 ? (
+    <div className="mb-3 flex items-center gap-2 p-2 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+      <History size={14} className="text-amber-400" />
+      <span className="text-xs text-amber-300 font-mono">
+        {redoCount} message{redoCount > 1 ? 's' : ''} undone
+      </span>
+      <button
+        onClick={redoLast}
+        className="px-2 py-1 text-xs bg-amber-500 hover:bg-amber-400 text-zinc-950 rounded transition-colors"
+      >
+        Redo All
+      </button>
+      <button
+        onClick={redo}
+        className="px-2 py-1 text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded transition-colors"
+      >
+        Redo Last
+      </button>
+    </div>
+  ) : null
 
   const undoModal = undoModalOpen ? (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
@@ -1132,9 +1180,9 @@ setMessages(prev => {
                           >
                             <ChevronLeft size={12} />
                           </button>
-      </div>
-      {undoModal}
-    </div>
+                        </div>
+                        {undoModal}
+                      </div>
                       <div className="text-sm text-zinc-200 leading-relaxed whitespace-pre-wrap select-text break-words">
                         {msg.content}
                       </div>
@@ -1148,7 +1196,6 @@ setMessages(prev => {
                         {msg.isExecuting ? 'Working...' : 'Cascade'}
                       </div>
 
-                      {/* Reasoning block (streaming or final) */}
                       {msg.reasoning && (
                         <details className="group mb-2" open={msg.isExecuting}>
                           <summary className="flex items-center gap-2 cursor-pointer text-[11px] text-zinc-500 hover:text-zinc-300">
@@ -1162,7 +1209,6 @@ setMessages(prev => {
                         </details>
                       )}
 
-                      {/* Execution steps */}
                       {msg.events && msg.events.length > 0 && (
                         <div className="space-y-1.5 mb-3">
                           {msg.events.reduce<(ExecutionEvent & { result?: ExecutionEvent })[]>((acc, ev, idx) => {
@@ -1178,7 +1224,6 @@ setMessages(prev => {
                         </div>
                       )}
 
-                      {/* Status during execution */}
                       {msg.isExecuting && currentStatus && (
                         <div className="flex items-center gap-2 text-xs text-zinc-500 py-1">
                           <div className="flex items-center gap-0.5">
@@ -1190,7 +1235,6 @@ setMessages(prev => {
                         </div>
                       )}
 
-                      {/* Final content */}
                       {!msg.isExecuting && msg.content && (
                         <div className="text-sm text-zinc-200 leading-relaxed select-text space-y-1">
                           {formatContent(msg.content).map((part, idx) => (
@@ -1203,7 +1247,6 @@ setMessages(prev => {
                         </div>
                       )}
 
-                      {/* Summary footer */}
                       {!msg.isExecuting && (msg.filesModified || msg.commandsRun || msg.interrupted || msg.executionDuration) && (
                         <div className="flex flex-wrap items-center gap-1.5 mt-3 pt-3 border-t border-zinc-800/30">
                           {msg.filesModified && msg.filesModified.length > 0 && (
@@ -1267,20 +1310,20 @@ setMessages(prev => {
               ))}
             </div>
           )}
-<textarea
-              ref={inputRef}
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault()
-                  handleSubmit()
-                }
-              }}
-              placeholder="Ask me to build, fix, or explore your code..."
-              className="w-full bg-transparent border-none outline-none text-sm text-zinc-200 px-4 py-3 resize-y min-h-[42px] max-h-[300px] placeholder:text-zinc-600"
-              rows={1}
-            />
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                handleSubmit()
+              }
+            }}
+            placeholder="Ask me to build, fix, or explore your code..."
+            className="w-full bg-transparent border-none outline-none text-sm text-zinc-200 px-4 py-3 resize-y min-h-[42px] max-h-[300px] placeholder:text-zinc-600"
+            rows={1}
+          />
 
           {/* Token counter */}
           <div className="px-3 flex items-center gap-2">
@@ -1378,7 +1421,6 @@ setMessages(prev => {
                         )}
                       </div>
                       <div className="overflow-y-auto flex-1">
-                        {/* Clear skill */}
                         <button
                           onClick={() => { onSkillChange?.(''); setShowSkillDropdown(false); setSkillSearch('') }}
                           className={`w-full text-left px-3 py-1.5 text-xs transition-colors hover:bg-zinc-800 flex items-center gap-2 ${
@@ -1388,7 +1430,6 @@ setMessages(prev => {
                           Default (no skill)
                         </button>
 
-                        {/* Recently used */}
                         {!skillSearch && recentSkillObjects.length > 0 && (
                           <>
                             <div className="px-3 pt-2 pb-1 text-[10px] text-zinc-600 font-medium uppercase tracking-wider flex items-center gap-1.5">
@@ -1410,7 +1451,6 @@ setMessages(prev => {
                           </>
                         )}
 
-                        {/* Categorized skills */}
                         {sortedCategoryNames.length === 0 && (
                           <div className="px-3 py-4 text-xs text-zinc-600 text-center">No skills found</div>
                         )}
@@ -1455,7 +1495,7 @@ setMessages(prev => {
                 )}
               </div>
 
-              {/* Attach file */}
+              {/* Attach file / dropdown selector */}
               <div className="relative">
                 <button
                   ref={fileBtnRef}
@@ -1511,12 +1551,28 @@ setMessages(prev => {
                               <span className="ml-auto text-[10px] text-zinc-600 font-mono">({openTabs.length})</span>
                             </button>
 
+                            <label
+                              htmlFor="native-file-uploader"
+                              className="w-full text-left px-3 py-1.5 text-xs hover:bg-sky-600/10 hover:text-sky-400 text-zinc-300 transition-colors flex items-center gap-2.5 cursor-pointer"
+                            >
+                              <FileText size={13} className="text-zinc-500 hover:text-sky-400 shrink-0" />
+                              <span className="font-medium">Upload File(s)...</span>
+                            </label>
+
+                            <label
+                              htmlFor="native-folder-uploader"
+                              className="w-full text-left px-3 py-1.5 text-xs hover:bg-sky-600/10 hover:text-sky-400 text-zinc-300 transition-colors flex items-center gap-2.5 cursor-pointer"
+                            >
+                              <FolderPlus size={13} className="text-zinc-500 hover:text-sky-400 shrink-0" />
+                              <span className="font-medium">Upload Folder...</span>
+                            </label>
+
                             <button
                               onClick={() => setPickerView('files')}
                               className="w-full text-left px-3 py-1.5 text-xs hover:bg-sky-600/10 hover:text-sky-400 text-zinc-300 transition-colors flex items-center gap-2.5"
                             >
                               <FolderOpen size={13} className="text-zinc-500 hover:text-sky-400 shrink-0" />
-                              <span className="font-medium">Files & Folders...</span>
+                              <span className="font-medium">Browse Workspace Files...</span>
                             </button>
 
                             <button
@@ -1549,7 +1605,7 @@ setMessages(prev => {
                                   setInput(prev => `Trace file exports and active declarations inside this symbol context: \n${prev}`)
                                   attachFile(activeFilePath, activeFilePath.split('/').pop() || activeFilePath)
                                 } else {
-                                  alert('Open a file first to parse local symbols.')
+                                  setCurrentStatus('Please open a file first to parse local symbols.')
                                 }
                               }}
                               className="w-full text-left px-3 py-1.5 text-xs hover:bg-sky-600/10 hover:text-sky-400 text-zinc-300 transition-colors flex items-center gap-2.5"
@@ -1630,7 +1686,7 @@ setMessages(prev => {
                           </div>
                         )}
 
-                        {/* VIEW 3: Files & Folders */}
+                        {/* VIEW 3: Browse Workspace Files */}
                         {(pickerView === 'files' || filePickerSearch) && (
                           <div className="space-y-0.5">
                             {!filePickerSearch && (
@@ -1771,12 +1827,28 @@ setMessages(prev => {
                     </div>
                   </>
                 )}
+                
                 <input 
                   type="file" 
                   id="screenshot-uploader" 
                   accept="image/*" 
                   className="hidden" 
                   onChange={handleImageUpload} 
+                />
+                <input 
+                  type="file" 
+                  id="native-file-uploader" 
+                  multiple 
+                  className="hidden" 
+                  onChange={handleNativeFilesUpload} 
+                />
+                <input 
+                  type="file" 
+                  id="native-folder-uploader" 
+                  {...({ webkitdirectory: "", directory: "" } as any)}
+                  multiple 
+                  className="hidden" 
+                  onChange={handleNativeFolderUpload} 
                 />
               </div>
             </div>
