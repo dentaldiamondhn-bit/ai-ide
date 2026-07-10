@@ -1,6 +1,5 @@
 'use client'
 
-import { useCallback } from 'react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,45 +29,11 @@ interface TopMenuBarProps {
   onOpenFile?: (path: string, content: string) => void
 }
 
-function createFileOrFolder(type: 'FILE' | 'FOLDER') {
-  const name = prompt(`Enter new ${type.toLowerCase()} name:`)
-  if (!name) return
-  const targetPath = `${process.cwd()}/${name}`
-  fetch('/api/files/action', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: type === 'FILE' ? 'CREATE_FILE' : 'CREATE_FOLDER', targetPath }),
-  }).then(r => r.json()).then(data => {
-    if (!data.success) alert('Failed to create ' + type.toLowerCase())
-    else window.location.reload()
-  })
-}
-
 export default function TopMenuBar({ onSave, activeFilePath, fileTreePath, onNewFile, onNewFolder, onCloseTab, onCloseAllTabs, onToggleSidebar, onToggleTerminal, onToggleChat, onToggleEditor, showSidebar, showTerminal, showChat, showEditor, onOpenFolder, onOpenFile }: TopMenuBarProps) {
   const filename = activeFilePath ? activeFilePath.split('/').pop() : 'Workspace'
   const folderName = fileTreePath ? fileTreePath.split('/').pop() || fileTreePath : null
 
   const handleSave = () => onSave?.()
-
-  const handleNewFile = useCallback(() => {
-    const name = prompt('Enter file name:')
-    if (!name) return
-    fetch('/api/files/action', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'CREATE_FILE', targetPath: name }),
-    }).then(r => r.json()).then(d => { if (!d.success) alert('Failed') })
-  }, [])
-
-  const handleNewFolder = useCallback(() => {
-    const name = prompt('Enter folder name:')
-    if (!name) return
-    fetch('/api/files/action', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'CREATE_FOLDER', targetPath: name }),
-    }).then(r => r.json()).then(d => { if (!d.success) alert('Failed') })
-  }, [])
 
   return (
     <header className="h-9 w-full bg-zinc-900/90 border-b border-zinc-800 flex items-center justify-between px-3 text-xs select-none z-50">
@@ -82,10 +47,10 @@ export default function TopMenuBar({ onSave, activeFilePath, fileTreePath, onNew
               File
             </DropdownMenuTrigger>
             <DropdownMenuContent className="bg-zinc-900 border-zinc-800 text-zinc-200 min-w-[200px]">
-              <DropdownMenuItem onClick={handleNewFile} className="focus:bg-zinc-800 focus:text-zinc-50 cursor-pointer py-2">
+              <DropdownMenuItem onClick={onNewFile} className="focus:bg-zinc-800 focus:text-zinc-50 cursor-pointer py-2">
                 New File <span className="ml-auto text-zinc-500 text-[10px]">Ctrl+N</span>
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleNewFolder} className="focus:bg-zinc-800 focus:text-zinc-50 cursor-pointer py-2">
+              <DropdownMenuItem onClick={onNewFolder} className="focus:bg-zinc-800 focus:text-zinc-50 cursor-pointer py-2">
                 New Folder <span className="ml-auto text-zinc-500 text-[10px]">Ctrl+Shift+N</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator className="bg-zinc-800" />

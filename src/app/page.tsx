@@ -243,12 +243,59 @@ export default function IDEPage() {
     }
   }
 
+  const handleNewFile = useCallback(async () => {
+    const name = prompt('Enter new file name:')
+    if (!name) return
+    const root = fileTreePath || '/home/dentaldiamondhn/diamond-link-original'
+    const targetPath = `${root}/${name}`.replace(/\/+/g, '/')
+    try {
+      const res = await fetch('/api/files/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'CREATE_FILE', targetPath }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success !== false) {
+        handleRefreshFileTree()
+        handleSelectFile(targetPath)
+      } else {
+        alert(`Failed to create file: ${data.error || 'Server error occurred.'}`)
+      }
+    } catch (err: any) {
+      alert(`Failed to create file: ${err.message}`)
+    }
+  }, [fileTreePath, handleRefreshFileTree, handleSelectFile])
+
+  const handleNewFolder = useCallback(async () => {
+    const name = prompt('Enter new folder name:')
+    if (!name) return
+    const root = fileTreePath || '/home/dentaldiamondhn/diamond-link-original'
+    const targetPath = `${root}/${name}`.replace(/\/+/g, '/')
+    try {
+      const res = await fetch('/api/files/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'CREATE_FOLDER', targetPath }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success !== false) {
+        handleRefreshFileTree()
+      } else {
+        alert(`Failed to create folder: ${data.error || 'Server error occurred.'}`)
+      }
+    } catch (err: any) {
+      alert(`Failed to create folder: ${err.message}`)
+    }
+  }, [fileTreePath, handleRefreshFileTree])
+
   return (
     <div className="h-screen w-screen flex flex-col bg-neutral-950 text-zinc-200 overflow-hidden select-none">
       <TopMenuBar 
         onSave={handleSaveFile} 
         activeFilePath={activeTabContent?.path || null}
         fileTreePath={fileTreePath || null}
+        onNewFile={handleNewFile}
+        onNewFolder={handleNewFolder}
         onCloseTab={() => activeTabContent && handleTabClose(activeTabContent.id)}
         onCloseAllTabs={() => setTabs([])}
         onToggleSidebar={toggleSidebar}

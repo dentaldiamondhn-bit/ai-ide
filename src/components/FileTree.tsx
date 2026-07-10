@@ -367,7 +367,8 @@ function NodeItem({ node, onFileSelect, onRefresh, depth, activeFilePath, lintRe
     if (actionType === 'CREATE_FILE' || actionType === 'CREATE_FOLDER') {
       const name = prompt(`Enter new ${actionType === 'CREATE_FILE' ? 'file' : 'folder'} name:`)
       if (!name) return
-      payload.targetPath = `${node.path}/${name}`
+      const cleanBasePath = node.path.endsWith('/') ? node.path.slice(0, -1) : node.path
+      payload.targetPath = `${cleanBasePath}/${name}`.replace(/\/+/g, '/')
     }
 
     if (actionType === 'DELETE') {
@@ -381,14 +382,15 @@ function NodeItem({ node, onFileSelect, onRefresh, depth, activeFilePath, lintRe
         body: JSON.stringify(payload)
       })
 
-      if (res.ok) {
+      const data = await res.json()
+      if (res.ok && data.success !== false) {
         onRefresh()
       } else {
-        alert('Action failed')
+        alert(`Action failed: ${data.error || 'Server error occurred.'}`)
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Action error:', error)
-      alert('Action failed')
+      alert(`Action failed: ${error.message}`)
     }
   }
 
