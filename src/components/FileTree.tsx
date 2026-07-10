@@ -305,7 +305,7 @@ export default function FileTree({ onFileSelect, onRefresh, startPath, activeFil
   return (
     <div className="flex flex-col h-full select-none text-zinc-300 font-sans text-sm">
       <div className="p-3 uppercase text-xs font-bold tracking-wider border-b border-zinc-800 text-zinc-400 flex justify-between items-center bg-zinc-900/50">
-        <span className="truncate">{workspaceName}</span>
+        <span className="truncate">Explorer</span>
         <div className="flex items-center gap-1">
           <button
             onClick={navigateUp}
