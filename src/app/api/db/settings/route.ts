@@ -1,12 +1,21 @@
 import { NextRequest } from 'next/server'
+import { createServerSupabaseClient } from '@/lib/supabase-auth'
 import { supabaseAdmin } from '@/lib/supabase'
 
 export async function GET() {
   try {
+    const supabase = await createServerSupabaseClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      return Response.json({ error: 'Unauthorized credentials sequence' }, { status: 401 })
+    }
+
     const { data, error } = await supabaseAdmin
       .from('ai_ide_settings')
       .select('value')
       .eq('key', 'app_settings')
+      .eq('user_id', user.id)
       .single()
 
     if (error && error.code !== 'PGRST116') {
@@ -20,10 +29,22 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
+    const supabase = await createServerSupabaseClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      return Response.json({ error: 'Unauthorized credentials sequence' }, { status: 401 })
+    }
+
     const { settings } = await req.json()
+
     const { error } = await supabaseAdmin
       .from('ai_ide_settings')
-      .upsert({ key: 'app_settings', value: settings })
+      .upsert({ 
+        key: 'app_settings', 
+        user_id: user.id, 
+        value: settings 
+      })
       .select()
       .single()
 
