@@ -12,6 +12,9 @@ import TopMenuBar from '@/components/TopMenuBar'
 import ActivityBar from '@/components/ActivityBar'
 import SourceControlPanel from '@/components/SourceControlPanel'
 import SearchPanel from '@/components/SearchPanel'
+import CodemapsPanel from '@/components/CodemapsPanel'
+import CodeWikiPanel from '@/components/CodeWikiPanel'
+import SettingsPanel from '@/components/SettingsPanel'
 import VSCodePanel from '@/components/VSCodePanel'
 
 function getFileTabIcon(fileName: string) {
@@ -282,9 +285,13 @@ export default function IDEPage() {
                     {activeActivityTab === 'git' ? (
                       <SourceControlPanel />
                     ) : activeActivityTab === 'search' ? (
-                      <SearchPanel onSelectFile={(path, line) => {
-                        handleSelectFile(path)
-                      }} />
+                      <SearchPanel onSelectFile={(path) => handleSelectFile(path)} />
+                    ) : activeActivityTab === 'codemaps' ? (
+                      <CodemapsPanel onSelectFile={(path) => handleSelectFile(path)} />
+                    ) : activeActivityTab === 'deepwiki' ? (
+                      <CodeWikiPanel />
+                    ) : activeActivityTab === 'extensions' ? (
+                      <SettingsPanel />
                     ) : (
                       settingsLoaded && <FileTree key={fileTreeKey} startPath={fileTreePath} activeFilePath={activeTabContent?.path || null} onFileSelect={handleSelectFile} onRefresh={handleRefreshFileTree} lintResults={lintResults} />
                     )}
