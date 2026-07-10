@@ -6,7 +6,6 @@ import {
   GitBranch,
   Map,
   BookOpen,
-  Blocks,
   Play,
   Settings,
 } from 'lucide-react'
@@ -24,7 +23,6 @@ export default function ActivityBar({ activeTab, onTabChange }: ActivityBarProps
     { id: 'git', icon: GitBranch, label: 'Source Control' },
     { id: 'codemaps', icon: Map, label: 'Codemaps' },
     { id: 'deepwiki', icon: BookOpen, label: 'Deepwiki' },
-    { id: 'extensions', icon: Blocks, label: 'Extensions' },
     { id: 'debug', icon: Play, label: 'Run and Debug' },
   ]
 
@@ -54,7 +52,17 @@ export default function ActivityBar({ activeTab, onTabChange }: ActivityBarProps
       </div>
 
       <div className="flex flex-col w-full items-center gap-1">
-        <button title="Settings" className="w-full py-3 flex items-center justify-center text-zinc-500 hover:text-zinc-200 transition-colors">
+        <button
+          onClick={() => onTabChange('settings')}
+          title="Settings"
+          className={cn(
+            "w-full py-3 flex items-center justify-center relative transition-colors group",
+            activeTab === 'settings' ? "text-sky-400" : "text-zinc-500 hover:text-zinc-200"
+          )}
+        >
+          {activeTab === 'settings' && (
+            <div className="absolute left-0 top-0 bottom-0 w-[2px] bg-sky-400" />
+          )}
           <Settings size={18} strokeWidth={1.5} />
         </button>
       </div>

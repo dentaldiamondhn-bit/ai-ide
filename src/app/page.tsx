@@ -290,7 +290,7 @@ export default function IDEPage() {
                       <CodemapsPanel onSelectFile={(path) => handleSelectFile(path)} />
                     ) : activeActivityTab === 'deepwiki' ? (
                       <CodeWikiPanel />
-                    ) : activeActivityTab === 'extensions' ? (
+                    ) : activeActivityTab === 'settings' ? (
                       <SettingsPanel />
                     ) : (
                       settingsLoaded && <FileTree key={fileTreeKey} startPath={fileTreePath} activeFilePath={activeTabContent?.path || null} onFileSelect={handleSelectFile} onRefresh={handleRefreshFileTree} lintResults={lintResults} />
