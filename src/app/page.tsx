@@ -16,6 +16,7 @@ import CodemapsPanel from '@/components/CodemapsPanel'
 import CodeWikiPanel from '@/components/CodeWikiPanel'
 import SettingsPanel from '@/components/SettingsPanel'
 import VSCodePanel from '@/components/VSCodePanel'
+import WelcomeScreen from '@/components/WelcomeScreen'
 
 function getFileTabIcon(fileName: string) {
   const ext = fileName.split('.').pop()?.toLowerCase()
@@ -151,6 +152,22 @@ export default function IDEPage() {
   const toggleTerminal = useCallback(() => setShowTerminal(p => !p), [])
   const toggleChat = useCallback(() => setShowChat(p => !p), [])
   const toggleEditor = useCallback(() => setShowEditor(p => !p), [])
+
+  const handleOpenFolder = useCallback((path: string) => {
+    setFileTreePath(path || undefined)
+    setFileTreeKey(k => k + 1)
+    if (path) {
+      try {
+        const stored = localStorage.getItem('ia-ide-recent-workspaces')
+        let recents: string[] = stored ? JSON.parse(stored) : []
+        recents = recents.filter(item => item !== path)
+        recents.unshift(path)
+        localStorage.setItem('ia-ide-recent-workspaces', JSON.stringify(recents.slice(0, 12)))
+      } catch (err) {
+        console.error('Failed to log recent workspace', err)
+      }
+    }
+  }, [])
 
   const handleSelectFile = (path: string) => {
     fetch(`/api/files?action=read&path=${encodeURIComponent(path)}`)
@@ -306,7 +323,7 @@ export default function IDEPage() {
         showTerminal={showTerminal}
         showChat={showChat}
         showEditor={showEditor}
-        onOpenFolder={(path) => { setFileTreePath(path); setFileTreeKey(k => k + 1) }}
+        onOpenFolder={handleOpenFolder}
         onOpenFile={(name, content) => {
           const newTab = {
             id: Date.now().toString(),
@@ -414,15 +431,13 @@ export default function IDEPage() {
                               animationEvent={animEvent}
                             />
                           ) : (
-                            <div className="h-full flex flex-col items-center justify-center gap-3 text-zinc-500 select-none">
-                              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" className="text-zinc-700">
-                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                                <polyline points="14 2 14 8 20 8"/>
-                                <line x1="16" y1="13" x2="8" y2="13"/>
-                                <line x1="16" y1="17" x2="8" y2="17"/>
-                              </svg>
-                              <span className="text-sm">Select a file to edit</span>
-                            </div>
+                            <WelcomeScreen
+                              onOpenFolder={handleOpenFolder}
+                              onNewFile={handleNewFile}
+                              onNewFolder={handleNewFolder}
+                              selectedModel={selectedModel}
+                              onModelChange={setSelectedModel}
+                            />
                           )}
                         </div>
                       )}

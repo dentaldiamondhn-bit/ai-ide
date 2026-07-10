@@ -85,6 +85,9 @@ export default function TopMenuBar({ onSave, activeFilePath, fileTreePath, onNew
                 Save As... <span className="ml-auto text-zinc-500 text-[10px]">Ctrl+Shift+S</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator className="bg-zinc-800" />
+              <DropdownMenuItem onSelect={() => { if (onOpenFolder) onOpenFolder('') }} className="focus:bg-zinc-800 focus:text-zinc-50 cursor-pointer py-2 text-rose-400 focus:text-rose-400">
+                Close Folder
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={onCloseTab} className="focus:bg-zinc-800 focus:text-zinc-50 cursor-pointer py-2">
                 Close Tab <span className="ml-auto text-zinc-500 text-[10px]">Ctrl+W</span>
               </DropdownMenuItem>
