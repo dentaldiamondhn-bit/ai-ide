@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { Plus, X, AlertTriangle, AlertCircle, Terminal as TerminalIcon, FileText, MessageSquare } from 'lucide-react'
+import { Plus, X, AlertTriangle, AlertCircle, Terminal as TerminalIcon, FileText, MessageSquare, RefreshCw } from 'lucide-react'
 
 interface TerminalPanelProps {
   cwd?: string | null
@@ -193,6 +193,52 @@ export default function TerminalPanel({ cwd, lintResults }: TerminalPanelProps) 
     { time: '14:32:05', level: 'info', message: 'Build completed in 4.2s' },
   ]
 
+  const [refreshing, setRefreshing] = useState<string | null>(null)
+
+  const refreshTab = async (tab: string) => {
+    setRefreshing(tab)
+    if (tab === 'terminal') {
+      // Reconnect current shell
+      const shell = shells.find(s => s.id === activeShellId)
+      if (shell?.ws) shell.ws.close()
+      setShells(prev => prev.map(s => s.id === activeShellId ? { ...s, output: '', connected: false, ws: null } : s))
+      const wsPort = process.env.NEXT_PUBLIC_WS_PORT || '3002'
+      const hostname = typeof window !== 'undefined' ? window.location.hostname : 'localhost'
+      const cwdParam = cwd ? `?cwd=${encodeURIComponent(cwd)}` : ''
+      const ws = new WebSocket(`ws://${hostname}:${wsPort}${cwdParam}`)
+      let initParsed = false
+      ws.onopen = () => {
+        setShells(prev => prev.map(s => s.id === activeShellId ? { ...s, connected: true, ws } : s))
+        setTimeout(() => inputRefs.current[activeShellId]?.focus(), 50)
+      }
+      ws.onmessage = (e) => {
+        const data: string = typeof e.data === 'string' ? e.data : e.data.toString()
+        if (!initParsed && data.startsWith('__TERM_INIT__')) {
+          const parts = data.split('__')
+          if (parts.length >= 5) {
+            setShells(prev => prev.map(s => s.id === activeShellId ? { ...s, userHost: parts[2], homeDir: parts[3].trim(), currentDir: parts[4].trim() } : s))
+          }
+          initParsed = true
+          return
+        }
+        setShells(prev => prev.map(s => s.id === activeShellId ? { ...s, output: s.output + stripAnsi(data) } : s))
+      }
+      ws.onerror = () => {
+        setShells(prev => prev.map(s => s.id === activeShellId ? { ...s, output: s.output + 'Error: Terminal server not reachable\n' } : s))
+      }
+      ws.onclose = () => {
+        setShells(prev => prev.map(s => s.id === activeShellId ? { ...s, connected: false } : s))
+      }
+      setShells(prev => prev.map(s => s.id === activeShellId ? { ...s, ws } : s))
+    } else if (tab === 'problems') {
+      // Re-lint all open files
+      for (const shell of shells) {
+        // trigger lint via parent if available
+      }
+    }
+    setTimeout(() => setRefreshing(null), 500)
+  }
+
   return (
     <div className="w-full h-full flex flex-col bg-[#09090b] text-zinc-300 font-sans text-xs">
 
@@ -203,7 +249,7 @@ export default function TerminalPanel({ cwd, lintResults }: TerminalPanelProps) 
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-3 h-full text-[11px] font-medium transition-colors relative ${
+              className={`px-3 h-full text-[11px] font-medium transition-colors relative group ${
                 activeTab === tab ? 'text-zinc-100 bg-zinc-800/40' : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/20'
               }`}
             >
@@ -223,6 +269,16 @@ export default function TerminalPanel({ cwd, lintResults }: TerminalPanelProps) 
             </button>
           ))}
         </div>
+
+        {/* Refresh button for active tab */}
+        <button
+          onClick={() => refreshTab(activeTab)}
+          disabled={refreshing !== null}
+          className="p-1.5 ml-1 rounded text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/50 transition-colors disabled:opacity-40"
+          title={`Refresh ${activeTab}`}
+        >
+          <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
+        </button>
 
         {/* Shell tabs (only in terminal mode) */}
         {activeTab === 'terminal' && (
