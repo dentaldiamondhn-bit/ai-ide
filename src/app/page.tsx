@@ -433,14 +433,8 @@ export default function IDEPage() {
                     <>
                       <PanelResizeHandle className="h-1 bg-zinc-900 hover:bg-zinc-800 transition-colors cursor-row-resize" />
                       <Panel id="terminal-panel" order={2} defaultSize={30} minSize={10} className="overflow-hidden bg-neutral-950 flex flex-col">
-                        <div className="h-8 border-b border-zinc-900 bg-zinc-950 flex items-center px-4 text-xs gap-4 text-zinc-400 shrink-0">
-                          <span className="text-zinc-100 border-b border-white h-full flex items-center">Terminal</span>
-                          <span>Output</span>
-                          <span>Console</span>
-                          <span>Problems</span>
-                        </div>
                         <div className="flex-1 min-h-0">
-                          <TerminalPanel cwd={fileTreePath} />
+                          <TerminalPanel cwd={fileTreePath} lintResults={lintResults} />
                         </div>
                       </Panel>
                     </>
