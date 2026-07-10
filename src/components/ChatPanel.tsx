@@ -5,7 +5,8 @@ import {
   Send, Bot, ChevronDown, X, Loader2, Square,
   FileText, FileEdit, Terminal, CheckCircle2, AlertCircle, ChevronRight, Search,
   Copy, Check, Sparkles, MoreHorizontal, MessageSquare, Clock,
-  User, Code2, Plus, History, PanelRight, Zap, Trash2, Lightbulb, ChevronLeft, Paperclip
+  User, Code2, Plus, History, PanelRight, Zap, Trash2, Lightbulb, ChevronLeft, Paperclip,
+  Layers, FolderOpen, Camera, AlertTriangle, Braces, Wrench
 } from 'lucide-react'
 
 interface ExecutionEvent {
@@ -59,6 +60,8 @@ interface ChatPanelProps {
   onModelChange?: (model: string) => void
   selectedSkill?: string
   onSkillChange?: (skill: string) => void
+  openTabs?: { id: string; name: string; path: string }[]
+  lintResults?: Record<string, { errors: number; warnings: number }>
 }
 
 function CodeBlock({ code, language }: { code: string; language: string }) {
@@ -212,7 +215,7 @@ interface HistorySnapshot {
   chatId: string
 }
 
-export default function ChatPanel({ onRefreshFileTree, onReloadFile, onFileModified, activeFilePath, fileTreePath, selectedModel: modelProp, onModelChange, selectedSkill: skillProp, onSkillChange }: ChatPanelProps) {
+export default function ChatPanel({ onRefreshFileTree, onReloadFile, onFileModified, activeFilePath, fileTreePath, selectedModel: modelProp, onModelChange, selectedSkill: skillProp, onSkillChange, openTabs = [], lintResults = {} }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const latestMessages = useRef<Message[]>([])
   latestMessages.current = messages
@@ -241,6 +244,15 @@ export default function ChatPanel({ onRefreshFileTree, onReloadFile, onFileModif
   const [fileDropPos, setFileDropPos] = useState<{top: number; left: number}>({top: 0, left: 0})
   const [filePickerSearch, setFilePickerSearch] = useState('')
   const [filePickerFiles, setFilePickerFiles] = useState<{name: string; path: string; type: string}[]>([])
+  
+  const [recentFiles, setRecentFiles] = useState<string[]>([])
+  const [pickerView, setPickerView] = useState<'main' | 'editors' | 'files' | 'skills' | 'problems' | 'sessions' | 'tools'>('main')
+
+  useEffect(() => {
+    if (activeFilePath && !recentFiles.includes(activeFilePath)) {
+      setRecentFiles(prev => [activeFilePath, ...prev.filter(x => x !== activeFilePath)].slice(0, 8))
+    }
+  }, [activeFilePath])
 
   const pushHistory = useCallback((msgs: Message[], inp: string) => {
     setHistoryStack(prevStack => {
@@ -485,11 +497,28 @@ export default function ChatPanel({ onRefreshFileTree, onReloadFile, onFileModif
     } catch {}
     setShowFilePicker(false)
     setFilePickerSearch('')
+    setPickerView('main')
   }, [attachedFiles])
 
   const detachFile = useCallback((filePath: string) => {
     setAttachedFiles(prev => prev.filter(f => f.path !== filePath))
   }, [])
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      setAttachedFiles(prev => [...prev, {
+        name: `📸 ${file.name}`,
+        path: `img-${Date.now()}-${file.name}`,
+        content: `[Image attachment of ${file.name} - encoded as: ${reader.result}]`
+      }])
+    }
+    reader.readAsDataURL(file)
+    setShowFilePicker(false)
+    setPickerView('main')
+  }
 
   const currentModel = models.find(m => m.id === selectedModel)
 
@@ -1433,11 +1462,12 @@ setMessages(prev => {
                   onClick={() => {
                     if (!showFilePicker && fileBtnRef.current) {
                       const r = fileBtnRef.current.getBoundingClientRect()
-                      const dropW = 288
+                      const dropW = 320
                       const left = r.left + dropW > window.innerWidth ? window.innerWidth - dropW - 8 : r.left
                       setFileDropPos({ top: r.top - 4, left })
                     }
                     setShowFilePicker(!showFilePicker)
+                    setPickerView('main')
                   }}
                   className="text-[10px] px-2 py-1 rounded-md bg-zinc-800/60 text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800 transition-colors flex items-center gap-1.5"
                   title="Attach file"
@@ -1446,15 +1476,17 @@ setMessages(prev => {
                 </button>
                 {showFilePicker && (
                   <>
-                    <div className="fixed inset-0 z-40" onClick={() => { setShowFilePicker(false); setFilePickerSearch('') }} />
-                    <div className="fixed z-50 w-72 bg-zinc-900 border border-zinc-800 rounded-lg shadow-2xl max-h-[320px] flex flex-col" style={{ top: fileDropPos.top, left: fileDropPos.left, transform: 'translateY(-100%)' }}>
-                      <div className="flex items-center gap-2 px-3 py-2 border-b border-zinc-800">
+                    <div className="fixed inset-0 z-40" onClick={() => { setShowFilePicker(false); setFilePickerSearch(''); setPickerView('main') }} />
+                    <div className="fixed z-50 w-80 bg-[#09090b] border border-zinc-800 rounded-lg shadow-2xl max-h-[420px] flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-150" style={{ top: fileDropPos.top, left: fileDropPos.left, transform: 'translateY(-100%)' }}>
+                      
+                      {/* Search Header */}
+                      <div className="flex items-center gap-2 px-3 py-2.5 border-b border-zinc-800/60 bg-black/40">
                         <Search size={12} className="text-zinc-500 shrink-0" />
                         <input
                           value={filePickerSearch}
                           onChange={e => setFilePickerSearch(e.target.value)}
-                          placeholder="Search files..."
-                          className="bg-transparent border-none outline-none text-xs text-zinc-200 w-full placeholder:text-zinc-600"
+                          placeholder="Search attachments..."
+                          className="bg-transparent border-none outline-none text-xs text-zinc-100 w-full placeholder:text-zinc-600 font-sans"
                           autoFocus
                         />
                         {filePickerSearch && (
@@ -1463,35 +1495,289 @@ setMessages(prev => {
                           </button>
                         )}
                       </div>
-                      <div className="overflow-y-auto flex-1">
-                        {filteredFilePickerFiles.length === 0 && (
-                          <div className="px-3 py-4 text-xs text-zinc-600 text-center">No files found</div>
-                        )}
-                        {filteredFilePickerFiles.slice(0, 100).map(f => {
-                          const isAttached = attachedFiles.some(a => a.path === f.path)
-                          return (
+
+                      <div className="overflow-y-auto flex-1 custom-scrollbar py-1">
+                        
+                        {/* VIEW 1: Main Category Hub */}
+                        {pickerView === 'main' && !filePickerSearch && (
+                          <div className="space-y-0.5">
+                            
                             <button
-                              key={f.path}
-                              onClick={() => !isAttached && attachFile(f.path, f.name)}
-                              className={`w-full text-left px-3 py-1.5 text-xs transition-colors hover:bg-zinc-800 flex items-center gap-2 ${
-                                isAttached ? 'text-sky-400 bg-sky-500/5' : 'text-zinc-400'
-                              }`}
+                              onClick={() => setPickerView('editors')}
+                              className="w-full text-left px-3 py-1.5 text-xs hover:bg-sky-600/10 hover:text-sky-400 text-zinc-300 transition-colors flex items-center gap-2.5"
                             >
-                              <FileText size={11} className={isAttached ? 'text-sky-400' : 'text-zinc-600'} />
-                              <span className="truncate">{f.name}</span>
-                              {isAttached && <Check size={10} className="ml-auto text-sky-400" />}
+                              <Layers size={13} className="text-zinc-500 hover:text-sky-400 shrink-0" />
+                              <span className="font-medium">Open Editors</span>
+                              <span className="ml-auto text-[10px] text-zinc-600 font-mono">({openTabs.length})</span>
                             </button>
-                          )
-                        })}
-                        {filteredFilePickerFiles.length > 100 && (
-                          <div className="px-3 py-2 text-[10px] text-zinc-600 text-center border-t border-zinc-800">
-                            Showing 100 of {filteredFilePickerFiles.length} files
+
+                            <button
+                              onClick={() => setPickerView('files')}
+                              className="w-full text-left px-3 py-1.5 text-xs hover:bg-sky-600/10 hover:text-sky-400 text-zinc-300 transition-colors flex items-center gap-2.5"
+                            >
+                              <FolderOpen size={13} className="text-zinc-500 hover:text-sky-400 shrink-0" />
+                              <span className="font-medium">Files & Folders...</span>
+                            </button>
+
+                            <button
+                              onClick={() => setPickerView('skills')}
+                              className="w-full text-left px-3 py-1.5 text-xs hover:bg-sky-600/10 hover:text-sky-400 text-zinc-300 transition-colors flex items-center gap-2.5"
+                            >
+                              <Sparkles size={13} className="text-zinc-500 hover:text-sky-400 shrink-0" />
+                              <span className="font-medium">Instructions...</span>
+                            </button>
+
+                            <label
+                              htmlFor="screenshot-uploader"
+                              className="w-full text-left px-3 py-1.5 text-xs hover:bg-sky-600/10 hover:text-sky-400 text-zinc-300 transition-colors flex items-center gap-2.5 cursor-pointer"
+                            >
+                              <Camera size={13} className="text-zinc-500 shrink-0" />
+                              <span className="font-medium">Screenshot</span>
+                            </label>
+
+                            <button
+                              onClick={() => setPickerView('problems')}
+                              className="w-full text-left px-3 py-1.5 text-xs hover:bg-sky-600/10 hover:text-sky-400 text-zinc-300 transition-colors flex items-center gap-2.5"
+                            >
+                              <AlertTriangle size={13} className="text-zinc-500 hover:text-sky-400 shrink-0" />
+                              <span className="font-medium">Problems...</span>
+                            </button>
+
+                            <button
+                              onClick={() => {
+                                if (activeFilePath) {
+                                  setInput(prev => `Trace file exports and active declarations inside this symbol context: \n${prev}`)
+                                  attachFile(activeFilePath, activeFilePath.split('/').pop() || activeFilePath)
+                                } else {
+                                  alert('Open a file first to parse local symbols.')
+                                }
+                              }}
+                              className="w-full text-left px-3 py-1.5 text-xs hover:bg-sky-600/10 hover:text-sky-400 text-zinc-300 transition-colors flex items-center gap-2.5"
+                            >
+                              <Braces size={13} className="text-zinc-500 hover:text-sky-400 shrink-0" />
+                              <span className="font-medium">Symbols...</span>
+                            </button>
+
+                            <button
+                              onClick={() => setPickerView('sessions')}
+                              className="w-full text-left px-3 py-1.5 text-xs hover:bg-sky-600/10 hover:text-sky-400 text-zinc-300 transition-colors flex items-center gap-2.5"
+                            >
+                              <History size={13} className="text-zinc-500 hover:text-sky-400 shrink-0" />
+                              <span className="font-medium">Sessions...</span>
+                            </button>
+
+                            <button
+                              onClick={() => setPickerView('tools')}
+                              className="w-full text-left px-3 py-1.5 text-xs hover:bg-sky-600/10 hover:text-sky-400 text-zinc-300 transition-colors flex items-center gap-2.5"
+                            >
+                              <Wrench size={13} className="text-zinc-500 hover:text-sky-400 shrink-0" />
+                              <span className="font-medium">Tools...</span>
+                            </button>
+
+                            <div className="px-3 pt-3 pb-1 text-[9px] font-bold text-zinc-600 uppercase tracking-wider">
+                              recently opened
+                            </div>
+
+                            {recentFiles.length === 0 ? (
+                              <div className="px-3 py-2 text-[10px] text-zinc-600 italic">No recently edited files</div>
+                            ) : (
+                              recentFiles.map(pathStr => {
+                                const name = pathStr.split('/').pop() || pathStr
+                                const parent = pathStr.split('/').slice(-2, -1)[0] || 'workspace'
+                                const isAttached = attachedFiles.some(a => a.path === pathStr)
+                                return (
+                                  <button
+                                    key={pathStr}
+                                    onClick={() => !isAttached && attachFile(pathStr, name)}
+                                    className={`w-full text-left px-3 py-1 text-xs transition-colors hover:bg-zinc-900 flex items-center gap-2 ${isAttached ? 'opacity-40 cursor-not-allowed' : ''}`}
+                                  >
+                                    <FileText size={12} className="text-sky-500/80 shrink-0" />
+                                    <span className="truncate text-zinc-300 font-mono text-[11px]">{name}</span>
+                                    <span className="text-[9px] text-zinc-600 truncate max-w-[80px] ml-1 font-sans">{parent}</span>
+                                    {isAttached && <Check size={10} className="ml-auto text-sky-400" />}
+                                  </button>
+                                )
+                              })
+                            )}
                           </div>
                         )}
+
+                        {/* VIEW 2: Open Editors */}
+                        {pickerView === 'editors' && (
+                          <div className="space-y-0.5">
+                            <button onClick={() => setPickerView('main')} className="w-full text-left px-3 py-1.5 text-[10px] text-sky-400 hover:underline font-semibold">
+                              ← Back to categories
+                            </button>
+                            <div className="px-3 pb-1 text-[10px] font-bold text-zinc-500 uppercase">Current Open Editors</div>
+                            {openTabs.length === 0 ? (
+                              <div className="px-3 py-4 text-xs text-zinc-600 italic">No files open in editor</div>
+                            ) : (
+                              openTabs.map(t => {
+                                const isAttached = attachedFiles.some(a => a.path === t.path)
+                                return (
+                                  <button
+                                    key={t.id}
+                                    onClick={() => !isAttached && attachFile(t.path, t.name)}
+                                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-zinc-900 flex items-center gap-2 ${isAttached ? 'text-sky-400 bg-sky-500/5' : 'text-zinc-400'}`}
+                                  >
+                                    <FileText size={11} className="text-amber-500" />
+                                    <span className="truncate">{t.name}</span>
+                                    {isAttached && <Check size={10} className="ml-auto text-sky-400" />}
+                                  </button>
+                                )
+                              })
+                            )}
+                          </div>
+                        )}
+
+                        {/* VIEW 3: Files & Folders */}
+                        {(pickerView === 'files' || filePickerSearch) && (
+                          <div className="space-y-0.5">
+                            {!filePickerSearch && (
+                              <button onClick={() => setPickerView('main')} className="w-full text-left px-3 py-1.5 text-[10px] text-sky-400 hover:underline font-semibold">
+                                ← Back to categories
+                              </button>
+                            )}
+                            <div className="px-3 pb-1 text-[10px] font-bold text-zinc-500 uppercase">
+                              {filePickerSearch ? 'Search matches' : 'All Workspace Files'}
+                            </div>
+                            {filteredFilePickerFiles.length === 0 && (
+                              <div className="px-3 py-4 text-xs text-zinc-600 text-center">No files found</div>
+                            )}
+                            {filteredFilePickerFiles.slice(0, 50).map(f => {
+                              const isAttached = attachedFiles.some(a => a.path === f.path)
+                              return (
+                                <button
+                                  key={f.path}
+                                  onClick={() => !isAttached && attachFile(f.path, f.name)}
+                                  className={`w-full text-left px-3 py-1.5 text-xs transition-colors hover:bg-zinc-800 flex items-center gap-2 ${
+                                    isAttached ? 'text-sky-400 bg-sky-500/5' : 'text-zinc-400'
+                                  }`}
+                                >
+                                  <FileText size={11} className={isAttached ? 'text-sky-400' : 'text-zinc-600'} />
+                                  <span className="truncate font-mono text-[11px]">{f.name}</span>
+                                  {isAttached && <Check size={10} className="ml-auto text-sky-400" />}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        )}
+
+                        {/* VIEW 4: Instructions / Skills */}
+                        {pickerView === 'skills' && (
+                          <div className="space-y-0.5">
+                            <button onClick={() => setPickerView('main')} className="w-full text-left px-3 py-1.5 text-[10px] text-sky-400 hover:underline font-semibold">
+                              ← Back to categories
+                            </button>
+                            <div className="px-3 pb-1 text-[10px] font-bold text-zinc-500 uppercase">Select Active Agent Skill</div>
+                            {skills.map(skill => (
+                              <button
+                                key={skill.name}
+                                onClick={() => { onSkillChange?.(skill.name); setShowFilePicker(false) }}
+                                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-zinc-900 ${selectedSkill === skill.name ? 'text-sky-300 bg-sky-500/10' : 'text-zinc-400'}`}
+                              >
+                                <div className="font-semibold">{skill.name}</div>
+                                <div className="text-[10px] text-zinc-600 truncate mt-0.5">{skill.description}</div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* VIEW 5: Problems / Lint Results */}
+                        {pickerView === 'problems' && (
+                          <div className="space-y-0.5">
+                            <button onClick={() => setPickerView('main')} className="w-full text-left px-3 py-1.5 text-[10px] text-sky-400 hover:underline font-semibold">
+                              ← Back to categories
+                            </button>
+                            <div className="px-3 pb-1 text-[10px] font-bold text-zinc-500 uppercase">Files containing Diagnostics</div>
+                            {Object.keys(lintResults).length === 0 ? (
+                              <div className="px-3 py-4 text-xs text-zinc-600 italic">No syntax errors tracked</div>
+                            ) : (
+                              Object.entries(lintResults).map(([filePath, res]) => {
+                                const name = filePath.split('/').pop() || filePath
+                                const isAttached = attachedFiles.some(a => a.path === filePath)
+                                return (
+                                  <button
+                                    key={filePath}
+                                    onClick={() => {
+                                      if (!isAttached) attachFile(filePath, name)
+                                      setInput(prev => `Fix the lint diagnostics found inside this file: ${name}. Errors: ${res.errors}, Warnings: ${res.warnings}\n${prev}`)
+                                    }}
+                                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-zinc-900 flex items-center justify-between"
+                                  >
+                                    <div className="min-w-0">
+                                      <div className="font-medium truncate text-zinc-300 font-mono text-[11px]">{name}</div>
+                                      <div className="text-[10px] text-zinc-500 truncate">{filePath}</div>
+                                    </div>
+                                    <div className="flex gap-1.5 shrink-0 ml-2">
+                                      {res.errors > 0 && <span className="px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-400 text-[9px] font-bold">E: {res.errors}</span>}
+                                      {res.warnings > 0 && <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-400 text-[9px] font-bold">W: {res.warnings}</span>}
+                                    </div>
+                                  </button>
+                                )
+                              })
+                            )}
+                          </div>
+                        )}
+
+                        {/* VIEW 6: Sessions */}
+                        {pickerView === 'sessions' && (
+                          <div className="space-y-0.5">
+                            <button onClick={() => setPickerView('main')} className="w-full text-left px-3 py-1.5 text-[10px] text-sky-400 hover:underline font-semibold">
+                              ← Back to categories
+                            </button>
+                            <div className="px-3 pb-1 text-[10px] font-bold text-zinc-500 uppercase font-sans">Chat History sessions</div>
+                            {savedChats.length === 0 ? (
+                              <div className="px-3 py-3 text-xs text-zinc-600 italic">No sessions saved</div>
+                            ) : (
+                              savedChats.map(c => (
+                                <button
+                                  key={c.id}
+                                  onClick={() => { loadChat(c.id, c.title); setShowFilePicker(false) }}
+                                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-zinc-900 truncate"
+                                >
+                                  {c.title}
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        )}
+
+                        {/* VIEW 7: Tools */}
+                        {pickerView === 'tools' && (
+                          <div className="space-y-0.5">
+                            <button onClick={() => setPickerView('main')} className="w-full text-left px-3 py-1.5 text-[10px] text-sky-400 hover:underline font-semibold">
+                              ← Back to categories
+                            </button>
+                            <div className="px-3 pb-1 text-[10px] font-bold text-zinc-500 uppercase">Run Assistant Commands</div>
+                            <button
+                              onClick={() => { setInput(`Write comprehensive test cases for the open component context.\n${input}`); setShowFilePicker(false) }}
+                              className="w-full text-left px-3 py-2 text-xs hover:bg-zinc-900 block"
+                            >
+                              <div className="font-semibold text-zinc-200">Generate Tests</div>
+                              <div className="text-[10px] text-zinc-500">Inject code test specs prompt template</div>
+                            </button>
+                            <button
+                              onClick={() => { setInput(`Refactor this block to improve performance and code readability:\n${input}`); setShowFilePicker(false) }}
+                              className="w-full text-left px-3 py-2 text-xs hover:bg-zinc-900 block"
+                            >
+                              <div className="font-semibold text-zinc-200">Refactor Code</div>
+                              <div className="text-[10px] text-zinc-500">Perform cleaner syntax splits</div>
+                            </button>
+                          </div>
+                        )}
+
                       </div>
                     </div>
                   </>
                 )}
+                <input 
+                  type="file" 
+                  id="screenshot-uploader" 
+                  accept="image/*" 
+                  className="hidden" 
+                  onChange={handleImageUpload} 
+                />
               </div>
             </div>
 

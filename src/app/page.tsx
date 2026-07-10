@@ -473,6 +473,8 @@ export default function IDEPage() {
                       onModelChange={setSelectedModel}
                       selectedSkill={selectedSkill}
                       onSkillChange={setSelectedSkill}
+                      openTabs={tabs}
+                      lintResults={lintResults}
                     />
                   </div>
                 </Panel>
