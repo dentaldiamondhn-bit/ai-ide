@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { Plus, X, AlertTriangle, AlertCircle, Terminal as TerminalIcon, FileText, MessageSquare, RefreshCw } from 'lucide-react'
+import { Plus, X, AlertTriangle, AlertCircle, Terminal as TerminalIcon, FileText, MessageSquare, RefreshCw, Play } from 'lucide-react'
 
 interface TerminalPanelProps {
   cwd?: string | null
@@ -20,6 +20,13 @@ interface ShellInstance {
   homeDir: string
   currentDir: string
   ws: WebSocket | null
+}
+
+interface ConsoleLogItem {
+  id: string
+  type: 'log' | 'warn' | 'error' | 'input' | 'result'
+  text: string
+  time: string
 }
 
 function stripAnsi(str: string): string {
@@ -48,24 +55,57 @@ export default function TerminalPanel({ cwd, lintResults }: TerminalPanelProps) 
   const [activeTab, setActiveTab] = useState<'terminal' | 'output' | 'console' | 'problems'>('terminal')
   const [shells, setShells] = useState<ShellInstance[]>([])
   const [activeShellId, setActiveShellId] = useState<string>('')
+  const [consoleLogs, setConsoleLogs] = useState<ConsoleLogItem[]>([])
+  const [consoleInput, setConsoleInput] = useState('')
+  const [consoleHistory, setConsoleHistory] = useState<string[]>([])
+  const [consoleHistoryIdx, setConsoleHistoryIdx] = useState(-1)
+
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({})
   const outputRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const consoleOutputRef = useRef<HTMLDivElement>(null)
+  const consoleInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    const originalLog = console.log
+    const originalWarn = console.warn
+    const originalError = console.error
+
+    const appendConsoleLog = (type: 'log' | 'warn' | 'error', args: any[]) => {
+      const text = args.map(arg => {
+        if (typeof arg === 'object') {
+          try { return JSON.stringify(arg, null, 2) } catch { return String(arg) }
+        }
+        return String(arg)
+      }).join(' ')
+      setConsoleLogs(prev => [
+        ...prev,
+        { id: `${Date.now()}-${Math.random()}`, type, text, time: new Date().toLocaleTimeString() }
+      ].slice(-250))
+    }
+
+    console.log = (...args: any[]) => { originalLog.apply(console, args); appendConsoleLog('log', args) }
+    console.warn = (...args: any[]) => { originalWarn.apply(console, args); appendConsoleLog('warn', args) }
+    console.error = (...args: any[]) => { originalError.apply(console, args); appendConsoleLog('error', args) }
+
+    const handleRuntimeError = (event: ErrorEvent) => {
+      appendConsoleLog('error', [`Runtime Error: ${event.message} at ${event.filename}:${event.lineno}`])
+    }
+    window.addEventListener('error', handleRuntimeError)
+
+    return () => {
+      console.log = originalLog
+      console.warn = originalWarn
+      console.error = originalError
+      window.removeEventListener('error', handleRuntimeError)
+    }
+  }, [])
 
   const createShell = useCallback((cwdPath?: string) => {
     shellCounter++
     const id = `shell-${shellCounter}`
     const newShell: ShellInstance = {
-      id,
-      label: `bash ${shellCounter}`,
-      output: '',
-      input: '',
-      connected: false,
-      history: [],
-      historyIdx: -1,
-      userHost: '',
-      homeDir: '',
-      currentDir: '',
-      ws: null
+      id, label: `bash ${shellCounter}`, output: '', input: '', connected: false,
+      history: [], historyIdx: -1, userHost: '', homeDir: '', currentDir: '', ws: null
     }
     setShells(prev => [...prev, newShell])
     setActiveShellId(id)
@@ -102,9 +142,7 @@ export default function TerminalPanel({ cwd, lintResults }: TerminalPanelProps) 
   }, [])
 
   useEffect(() => {
-    if (shells.length === 0) {
-      createShell(cwd || undefined)
-    }
+    if (shells.length === 0) createShell(cwd || undefined)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -121,6 +159,10 @@ export default function TerminalPanel({ cwd, lintResults }: TerminalPanelProps) 
     if (ref) ref.scrollTop = ref.scrollHeight
   }, [shells.find(s => s.id === activeShellId)?.output, activeShellId])
 
+  useEffect(() => {
+    if (consoleOutputRef.current) consoleOutputRef.current.scrollTop = consoleOutputRef.current.scrollHeight
+  }, [consoleLogs, activeTab])
+
   const closeShell = (id: string) => {
     const shell = shells.find(s => s.id === id)
     if (shell?.ws) shell.ws.close()
@@ -131,6 +173,53 @@ export default function TerminalPanel({ cwd, lintResults }: TerminalPanelProps) 
         if (remaining.length > 0) setActiveShellId(remaining[0].id)
         return prev
       })
+    }
+  }
+
+  const handleConsoleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!consoleInput.trim()) return
+
+    const trimmedInput = consoleInput.trim()
+    const timeStr = new Date().toLocaleTimeString()
+
+    setConsoleLogs(prev => [...prev, { id: `${Date.now()}-input`, type: 'input', text: trimmedInput, time: timeStr }])
+    setConsoleHistory(prev => [...prev, trimmedInput])
+    setConsoleHistoryIdx(-1)
+    setConsoleInput('')
+
+    let evaluationResult: any
+    try {
+      evaluationResult = (window as any).eval(trimmedInput)
+      let formattedResult = ""
+      if (evaluationResult === undefined) formattedResult = "undefined"
+      else if (evaluationResult === null) formattedResult = "null"
+      else if (typeof evaluationResult === 'object') formattedResult = JSON.stringify(evaluationResult, null, 2)
+      else formattedResult = String(evaluationResult)
+      setConsoleLogs(prev => [...prev, { id: `${Date.now()}-result`, type: 'result', text: `‹ ${formattedResult}`, time: timeStr }])
+    } catch (evalErr: any) {
+      setConsoleLogs(prev => [...prev, { id: `${Date.now()}-error`, type: 'error', text: `Uncaught Exception: ${evalErr.message}`, time: timeStr }])
+    }
+  }
+
+  const handleConsoleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      if (consoleHistory.length === 0) return
+      const newIdx = consoleHistoryIdx === -1 ? consoleHistory.length - 1 : Math.max(0, consoleHistoryIdx - 1)
+      setConsoleHistoryIdx(newIdx)
+      setConsoleInput(consoleHistory[newIdx])
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      if (consoleHistoryIdx === -1) return
+      const newIdx = consoleHistoryIdx + 1
+      if (newIdx >= consoleHistory.length) {
+        setConsoleHistoryIdx(-1)
+        setConsoleInput('')
+      } else {
+        setConsoleHistoryIdx(newIdx)
+        setConsoleInput(consoleHistory[newIdx])
+      }
     }
   }
 
@@ -151,12 +240,7 @@ export default function TerminalPanel({ cwd, lintResults }: TerminalPanelProps) 
     shell.ws?.send(shell.input + '\n')
 
     setShells(prev => prev.map(s => s.id === shellId ? {
-      ...s,
-      output: newOutput,
-      input: '',
-      history: [...s.history, shell.input],
-      historyIdx: -1,
-      currentDir: newDir
+      ...s, output: newOutput, input: '', history: [...s.history, shell.input], historyIdx: -1, currentDir: newDir
     } : s))
   }, [shells])
 
@@ -181,7 +265,6 @@ export default function TerminalPanel({ cwd, lintResults }: TerminalPanelProps) 
   }, [shells])
 
   const activeShell = shells.find(s => s.id === activeShellId)
-
   const totalErrors = lintResults ? Object.values(lintResults).reduce((sum, l) => sum + l.errors, 0) : 0
   const totalWarnings = lintResults ? Object.values(lintResults).reduce((sum, l) => sum + l.warnings, 0) : 0
   const problemFiles = lintResults ? Object.entries(lintResults).filter(([, l]) => l.errors > 0 || l.warnings > 0) : []
@@ -198,7 +281,6 @@ export default function TerminalPanel({ cwd, lintResults }: TerminalPanelProps) 
   const refreshTab = async (tab: string) => {
     setRefreshing(tab)
     if (tab === 'terminal') {
-      // Reconnect current shell
       const shell = shells.find(s => s.id === activeShellId)
       if (shell?.ws) shell.ws.close()
       setShells(prev => prev.map(s => s.id === activeShellId ? { ...s, output: '', connected: false, ws: null } : s))
@@ -230,11 +312,8 @@ export default function TerminalPanel({ cwd, lintResults }: TerminalPanelProps) 
         setShells(prev => prev.map(s => s.id === activeShellId ? { ...s, connected: false } : s))
       }
       setShells(prev => prev.map(s => s.id === activeShellId ? { ...s, ws } : s))
-    } else if (tab === 'problems') {
-      // Re-lint all open files
-      for (const shell of shells) {
-        // trigger lint via parent if available
-      }
+    } else if (tab === 'console') {
+      setConsoleLogs([])
     }
     setTimeout(() => setRefreshing(null), 500)
   }
@@ -270,17 +349,15 @@ export default function TerminalPanel({ cwd, lintResults }: TerminalPanelProps) 
           ))}
         </div>
 
-        {/* Refresh button for active tab */}
         <button
           onClick={() => refreshTab(activeTab)}
           disabled={refreshing !== null}
           className="p-1.5 ml-1 rounded text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/50 transition-colors disabled:opacity-40"
-          title={`Refresh ${activeTab}`}
+          title={activeTab === 'console' ? 'Clear Console' : `Refresh ${activeTab}`}
         >
           <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
         </button>
 
-        {/* Shell tabs (only in terminal mode) */}
         {activeTab === 'terminal' && (
           <div className="flex items-center ml-2 gap-0.5 h-8">
             {shells.map(shell => (
@@ -364,10 +441,58 @@ export default function TerminalPanel({ cwd, lintResults }: TerminalPanelProps) 
           </div>
         )}
 
-        {/* Console tab */}
+        {/* Interactive Console tab */}
         {activeTab === 'console' && (
-          <div className="w-full h-full overflow-y-auto p-3 text-zinc-500 text-xs italic">
-            Console output will appear here when the application runs in the browser.
+          <div className="w-full h-full flex flex-col font-mono text-[11px]">
+            <div
+              ref={consoleOutputRef}
+              className="flex-1 overflow-y-auto p-3 space-y-1.5 select-text selection:bg-sky-500/30"
+            >
+              {consoleLogs.length === 0 ? (
+                <div className="text-zinc-600 italic text-center pt-8">
+                  No execution logs recorded. Type expressions below to evaluate them in the browser environment.
+                </div>
+              ) : (
+                consoleLogs.map((log) => (
+                  <div key={log.id} className="flex items-start gap-2 leading-relaxed">
+                    <span className="text-zinc-600 shrink-0 select-none text-[9px] pt-0.5">{log.time}</span>
+                    {log.type === 'input' && (
+                      <span className="text-sky-400 font-bold shrink-0 select-none">›</span>
+                    )}
+                    <span className={`whitespace-pre-wrap ${
+                      log.type === 'error' ? 'text-rose-400' :
+                      log.type === 'warn' ? 'text-amber-400' :
+                      log.type === 'result' ? 'text-zinc-500 italic' :
+                      'text-zinc-300'
+                    }`}>
+                      {log.text}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <form onSubmit={handleConsoleSubmit} className="flex items-center gap-1.5 border-t border-zinc-800 px-3 py-1.5 bg-black/25">
+              <span className="text-sky-400 font-bold shrink-0 select-none">›</span>
+              <input
+                ref={consoleInputRef}
+                type="text"
+                value={consoleInput}
+                onChange={(e) => setConsoleInput(e.target.value)}
+                onKeyDown={handleConsoleKeyDown}
+                className="flex-1 bg-transparent outline-none text-zinc-100 placeholder-zinc-700"
+                placeholder="Evaluate JavaScript code... (e.g., 2 + 2 or alert('hi'))"
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <button
+                type="submit"
+                className="text-zinc-500 hover:text-sky-400 p-0.5 rounded transition-all"
+                title="Run command"
+              >
+                <Play size={11} />
+              </button>
+            </form>
           </div>
         )}
 
