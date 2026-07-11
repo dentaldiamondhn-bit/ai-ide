@@ -17,7 +17,7 @@ import CodeWikiPanel from '@/components/CodeWikiPanel'
 import SettingsPanel from '@/components/SettingsPanel'
 import VSCodePanel from '@/components/VSCodePanel'
 import WelcomeScreen from '@/components/WelcomeScreen'
-import { isFileSystemAccessSupported, mapLocalDirectory, readLocalFile, writeLocalFile, findFileHandle, findDirHandleByPath, createLocalResource, deleteLocalResource } from '@/lib/local-fs'
+import { isFileSystemAccessSupported, mapLocalDirectory, readLocalFile, writeLocalFile, findFileHandle, findDirHandleByPath, createLocalResource, deleteLocalResource, persistDirHandle, restoreDirHandle } from '@/lib/local-fs'
 import type { LocalFileNode } from '@/lib/local-fs'
 
 function getFileTabIcon(fileName: string) {
@@ -110,29 +110,57 @@ export default function IDEPage() {
   }, [triggerLint])
 
   useEffect(() => {
-    fetch('/api/db/settings')
-      .then(r => r.json())
-      .then(data => {
+    const loadSettings = async () => {
+      try {
+        // Restore FS directory handle from IndexedDB first
+        if (isFileSystemAccessSupported()) {
+          const restored = await restoreDirHandle()
+          if (restored) {
+            const tree = await mapLocalDirectory(restored, restored.name)
+            setFsRootHandle(restored)
+            setFsTree(tree)
+            setFileTreePath(restored.name)
+          }
+        }
+
+        const r = await fetch('/api/db/settings')
+        const data = await r.json()
         if (data.settings) {
           if (data.settings.showSidebar !== undefined) setShowSidebar(data.settings.showSidebar)
           if (data.settings.showTerminal !== undefined) setShowTerminal(data.settings.showTerminal)
           if (data.settings.showChat !== undefined) setShowChat(data.settings.showChat)
           if (data.settings.showEditor !== undefined) setShowEditor(data.settings.showEditor)
           if (data.settings.useVSCode !== undefined) setUseVSCode(data.settings.useVSCode)
-          if (data.settings.fileTreePath !== undefined) setFileTreePath(data.settings.fileTreePath)
-          if (data.settings.tabs !== undefined && data.settings.tabs.length > 0) {
-            setTabs(data.settings.tabs)
-            setActiveTabId(data.settings.activeTabId || data.settings.tabs[0]?.id || '')
-          }
+          if (data.settings.fileTreePath !== undefined && !restored) setFileTreePath(data.settings.fileTreePath)
           if (data.settings.selectedModel !== undefined) setSelectedModel(data.settings.selectedModel)
           if (data.settings.selectedSkill !== undefined) setSelectedSkill(data.settings.selectedSkill)
           if (data.settings.expandedFolders !== undefined) setExpandedFolders(new Set(data.settings.expandedFolders))
-        } else {
-          // No Supabase settings yet — use defaults
+          if (data.settings.tabs !== undefined && data.settings.tabs.length > 0) {
+            const restoredTabs: Tab[] = []
+            for (const tab of data.settings.tabs) {
+              let content = ''
+              if (restored && tree.length > 0) {
+                try {
+                  const fileHandle = findFileHandle(tree, tab.path)
+                  if (fileHandle) content = await readLocalFile(fileHandle)
+                } catch {}
+              }
+              if (!content) {
+                try {
+                  const res = await fetch(`/api/files?action=read&path=${encodeURIComponent(tab.path)}`)
+                  if (res.ok) { const d = await res.json(); content = d.content || '' }
+                } catch {}
+              }
+              restoredTabs.push({ ...tab, content })
+            }
+            setTabs(restoredTabs)
+            setActiveTabId(data.settings.activeTabId || restoredTabs[0]?.id || '')
+          }
         }
-      })
-      .catch(() => {})
-      .finally(() => { setSettingsLoaded(true) })
+      } catch {}
+      setSettingsLoaded(true)
+    }
+    loadSettings()
   }, [])
 
   useEffect(() => {
@@ -175,6 +203,7 @@ export default function IDEPage() {
         setFsTree(tree)
         setFileTreePath(dirHandle.name)
         setFileTreeKey(k => k + 1)
+        persistDirHandle(dirHandle)
         return
       } catch (err) {
         // User cancelled picker — fall through to WebSocket/HTTP path
