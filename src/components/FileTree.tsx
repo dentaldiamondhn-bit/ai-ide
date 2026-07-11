@@ -249,6 +249,19 @@ export default function FileTree({ onFileSelect, onRefresh, startPath, activeFil
   const fetchTree = async (pathTarget?: string) => {
     setLoading(true)
     try {
+      // Try WebSocket first (local file access from deployed app)
+      const { wsListFiles } = await import('@/lib/ws-file-client')
+      const wsResult = await wsListFiles(pathTarget)
+      if (wsResult) {
+        setTree(wsResult.tree)
+        setRootPath(wsResult.rootPath)
+        setParentPath(wsResult.parentPath)
+        setLoading(false)
+        return
+      }
+    } catch {}
+    try {
+      // Fall back to HTTP API (works in local dev)
       const url = pathTarget ? `/api/files?root=${encodeURIComponent(pathTarget)}` : '/api/files'
       const res = await fetch(url)
       const data = await res.json()
@@ -376,6 +389,13 @@ function NodeItem({ node, onFileSelect, onRefresh, depth, activeFilePath, lintRe
     }
 
     try {
+      // Try WebSocket first
+      try {
+        const { wsFileAction } = await import('@/lib/ws-file-client')
+        const result = await wsFileAction(payload.action, payload.targetPath, payload.content, payload.newName)
+        if (result) { onRefresh(); return }
+      } catch {}
+      // Fall back to HTTP API
       const res = await fetch('/api/files/action', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -402,9 +422,18 @@ function NodeItem({ node, onFileSelect, onRefresh, depth, activeFilePath, lintRe
 
   const copyContent = async (p: string) => {
     try {
-      const res = await fetch(`/api/files?action=read&path=${encodeURIComponent(p)}`)
-      const data = await res.json()
-      if (data.content) await navigator.clipboard.writeText(data.content)
+      let content = ''
+      try {
+        const { wsReadFile } = await import('@/lib/ws-file-client')
+        const wsContent = await wsReadFile(p)
+        if (wsContent !== null) content = wsContent
+      } catch {}
+      if (!content) {
+        const res = await fetch(`/api/files?action=read&path=${encodeURIComponent(p)}`)
+        const data = await res.json()
+        content = data.content || ''
+      }
+      if (content) await navigator.clipboard.writeText(content)
     } catch {}
   }
 

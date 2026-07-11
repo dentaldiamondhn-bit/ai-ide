@@ -459,24 +459,41 @@ export default function ChatPanel({ onRefreshFileTree, onReloadFile, onFileModif
   useEffect(() => {
     if (!showFilePicker) return
     const root = fileTreePath || ''
-    fetch(`/api/files?path=${encodeURIComponent(root)}`)
-      .then(r => r.json())
-      .then(data => {
-        const flatten = (nodes: any[], prefix = ''): {name: string; path: string; type: string}[] => {
-          const result: {name: string; path: string; type: string}[] = []
-          for (const n of nodes || []) {
-            if (n.name.startsWith('.') || n.name === 'node_modules') continue
-            if (n.isDirectory) {
-              result.push(...flatten(n.children || [], prefix + n.name + '/'))
-            } else {
-              result.push({ name: n.name, path: n.path, type: 'file' })
+    const loadFiles = async () => {
+      try {
+        const { wsListFiles } = await import('@/lib/ws-file-client')
+        const wsResult = await wsListFiles(root)
+        if (wsResult) {
+          const flatten = (nodes: any[]): {name: string; path: string; type: string}[] => {
+            const result: {name: string; path: string; type: string}[] = []
+            for (const n of nodes || []) {
+              if (n.name.startsWith('.') || n.name === 'node_modules') continue
+              if (n.isDirectory) result.push(...flatten(n.children || []))
+              else result.push({ name: n.name, path: n.path, type: 'file' })
             }
+            return result
           }
-          return result
+          setFilePickerFiles(flatten(wsResult.tree || []))
+          return
         }
-        setFilePickerFiles(flatten(data.tree || []))
-      })
-      .catch(() => {})
+      } catch {}
+      fetch(`/api/files?path=${encodeURIComponent(root)}`)
+        .then(r => r.json())
+        .then(data => {
+          const flatten = (nodes: any[]): {name: string; path: string; type: string}[] => {
+            const result: {name: string; path: string; type: string}[] = []
+            for (const n of nodes || []) {
+              if (n.name.startsWith('.') || n.name === 'node_modules') continue
+              if (n.isDirectory) result.push(...flatten(n.children || []))
+              else result.push({ name: n.name, path: n.path, type: 'file' })
+            }
+            return result
+          }
+          setFilePickerFiles(flatten(data.tree || []))
+        })
+        .catch(() => {})
+    }
+    loadFiles()
   }, [showFilePicker, fileTreePath])
 
   const filteredFilePickerFiles = filePickerSearch
@@ -486,9 +503,18 @@ export default function ChatPanel({ onRefreshFileTree, onReloadFile, onFileModif
   const attachFile = useCallback(async (filePath: string, fileName: string) => {
     if (attachedFiles.some(f => f.path === filePath)) return
     try {
-      const res = await fetch(`/api/files?action=read&path=${encodeURIComponent(filePath)}`)
-      const data = await res.json()
-      setAttachedFiles(prev => [...prev, { name: fileName, path: filePath, content: data.content || '' }])
+      let content = ''
+      try {
+        const { wsReadFile } = await import('@/lib/ws-file-client')
+        const wsContent = await wsReadFile(filePath)
+        if (wsContent !== null) content = wsContent
+      } catch {}
+      if (!content) {
+        const res = await fetch(`/api/files?action=read&path=${encodeURIComponent(filePath)}`)
+        const data = await res.json()
+        content = data.content || ''
+      }
+      setAttachedFiles(prev => [...prev, { name: fileName, path: filePath, content }])
     } catch {}
     setShowFilePicker(false)
     setFilePickerSearch('')

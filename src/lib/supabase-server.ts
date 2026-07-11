@@ -17,8 +17,8 @@ export async function createServerSupabaseClient() {
           cookiesToSet.forEach(({ name, value, options }) => {
             cookieStore.set(name, value, options)
           })
-        } catch (error) {
-          // Safe fallback when accessed inside Server Components or layouts
+        } catch {
+          // Silently fail in Server Components where set is not allowed
         }
       },
     },

@@ -141,7 +141,8 @@ export default function IDEPage() {
         fileTreePath, 
         selectedModel,
         selectedSkill,
-        activeTabId
+        activeTabId,
+        tabs: tabs.map(t => ({ id: t.id, name: t.name, path: t.path, language: t.language }))
       }
       fetch('/api/db/settings', {
         method: 'POST',
@@ -150,7 +151,7 @@ export default function IDEPage() {
       }).catch(() => {})
     }, 500)
     return () => clearTimeout(timeout)
-  }, [showSidebar, showTerminal, showChat, showEditor, useVSCode, fileTreePath, selectedModel, selectedSkill, activeTabId, settingsLoaded])
+  }, [showSidebar, showTerminal, showChat, showEditor, useVSCode, fileTreePath, selectedModel, selectedSkill, activeTabId, tabs, settingsLoaded])
 
   const toggleSidebar = useCallback(() => setShowSidebar(p => !p), [])
   const toggleTerminal = useCallback(() => setShowTerminal(p => !p), [])
@@ -173,49 +174,67 @@ export default function IDEPage() {
     }
   }, [])
 
-  const handleSelectFile = (path: string) => {
-    fetch(`/api/files?action=read&path=${encodeURIComponent(path)}`)
-      .then(res => {
+  const handleSelectFile = async (path: string) => {
+    try {
+      let content = ''
+      // Try WebSocket first (local file access from deployed app)
+      try {
+        const { wsReadFile } = await import('@/lib/ws-file-client')
+        const wsContent = await wsReadFile(path)
+        if (wsContent !== null) {
+          content = wsContent
+        }
+      } catch {}
+      // Fall back to HTTP API (works in local dev)
+      if (!content) {
+        const res = await fetch(`/api/files?action=read&path=${encodeURIComponent(path)}`)
         if (!res.ok) {
-          return res.json().then(err => {
-            throw new Error(err.error || 'Failed to load file')
-          })
+          const err = await res.json()
+          throw new Error(err.error || 'Failed to load file')
         }
-        return res.json()
-      })
-      .then(data => {
-        const existingTab = tabs.find(t => t.path === path)
-        if (existingTab) {
-          setActiveTabId(existingTab.id)
-        } else {
-          const newTab: Tab = {
-            id: Date.now().toString(),
-            name: path.split('/').pop() || path,
-            path,
-            language: path.endsWith('.ts') ? 'typescript' : 
-                      path.endsWith('.js') ? 'javascript' :
-                      path.endsWith('.json') ? 'json' :
-                      path.endsWith('.sql') ? 'sql' : 'text',
-            content: data.content || ''
-          }
-          setTabs(prev => [...prev, newTab])
-          setActiveTabId(newTab.id)
+        const data = await res.json()
+        content = data.content || ''
+      }
+      const existingTab = tabs.find(t => t.path === path)
+      if (existingTab) {
+        setActiveTabId(existingTab.id)
+      } else {
+        const newTab: Tab = {
+          id: Date.now().toString(),
+          name: path.split('/').pop() || path,
+          path,
+          language: path.endsWith('.ts') ? 'typescript' : 
+                    path.endsWith('.js') ? 'javascript' :
+                    path.endsWith('.json') ? 'json' :
+                    path.endsWith('.sql') ? 'sql' : 'text',
+          content
         }
-        debouncedLint(path, data.content)
-      })
-      .catch(error => {
-        console.error('Error loading file:', error)
-        alert(`Failed to load file: ${error.message}`)
-      })
+        setTabs(prev => [...prev, newTab])
+        setActiveTabId(newTab.id)
+      }
+      debouncedLint(path, content)
+    } catch (error: any) {
+      console.error('Error loading file:', error)
+      alert(`Failed to load file: ${error.message}`)
+    }
   }
 
   const handleReloadFile = async (filePath: string) => {
     try {
-      const res = await fetch(`/api/files?action=read&path=${encodeURIComponent(filePath)}`)
-      if (!res.ok) throw new Error('Failed to reload file')
-      const data = await res.json()
+      let content = ''
+      try {
+        const { wsReadFile } = await import('@/lib/ws-file-client')
+        const wsContent = await wsReadFile(filePath)
+        if (wsContent !== null) content = wsContent
+      } catch {}
+      if (!content) {
+        const res = await fetch(`/api/files?action=read&path=${encodeURIComponent(filePath)}`)
+        if (!res.ok) throw new Error('Failed to reload file')
+        const data = await res.json()
+        content = data.content || ''
+      }
       setTabs(prev => prev.map(t => 
-        t.path === filePath ? { ...t, content: data.content } : t
+        t.path === filePath ? { ...t, content } : t
       ))
     } catch (error) {
       console.error('Error reloading file:', error)
@@ -233,6 +252,13 @@ export default function IDEPage() {
     const fileContent = content || activeTab.content
 
     try {
+      // Try WebSocket first
+      try {
+        const { wsFileAction } = await import('@/lib/ws-file-client')
+        const result = await wsFileAction('SAVE_FILE', activeTab.path, fileContent)
+        if (result) { console.log('File saved via WebSocket'); return }
+      } catch {}
+      // Fall back to HTTP API
       const res = await fetch('/api/files/action', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -270,6 +296,13 @@ export default function IDEPage() {
     const root = fileTreePath || '/home/dentaldiamondhn/diamond-link-original'
     const targetPath = `${root}/${name}`.replace(/\/+/g, '/')
     try {
+      // Try WebSocket first
+      try {
+        const { wsFileAction } = await import('@/lib/ws-file-client')
+        const result = await wsFileAction('CREATE_FILE', targetPath)
+        if (result) { handleRefreshFileTree(); handleSelectFile(targetPath); return }
+      } catch {}
+      // Fall back to HTTP API
       const res = await fetch('/api/files/action', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -293,6 +326,13 @@ export default function IDEPage() {
     const root = fileTreePath || '/home/dentaldiamondhn/diamond-link-original'
     const targetPath = `${root}/${name}`.replace(/\/+/g, '/')
     try {
+      // Try WebSocket first
+      try {
+        const { wsFileAction } = await import('@/lib/ws-file-client')
+        const result = await wsFileAction('CREATE_FOLDER', targetPath)
+        if (result) { handleRefreshFileTree(); return }
+      } catch {}
+      // Fall back to HTTP API
       const res = await fetch('/api/files/action', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
