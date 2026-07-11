@@ -47,9 +47,11 @@ async function getAuthenticatedUserId(): Promise<string | null> {
   return null
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const userId = await getAuthenticatedUserId()
   if (!userId) return Response.json({ settings: null })
+
+  const deviceId = req.headers.get('x-device-id') || 'default'
 
   try {
     const { data, error } = await supabaseAdmin
@@ -57,6 +59,7 @@ export async function GET() {
       .select('value')
       .eq('key', 'app_settings')
       .eq('user_id', userId)
+      .eq('device_id', deviceId)
       .single()
 
     if (error && error.code !== 'PGRST116') {
@@ -72,6 +75,8 @@ export async function POST(req: NextRequest) {
   const userId = await getAuthenticatedUserId()
   if (!userId) return Response.json({ success: true })
 
+  const deviceId = req.headers.get('x-device-id') || 'default'
+
   try {
     const { settings } = await req.json()
 
@@ -82,27 +87,17 @@ export async function POST(req: NextRequest) {
       }))
     }
 
-    const existing = await supabaseAdmin
+    const { error } = await supabaseAdmin
       .from('ai_ide_settings')
-      .select('id')
-      .eq('key', 'app_settings')
-      .eq('user_id', userId)
-      .single()
+      .upsert({
+        key: 'app_settings',
+        user_id: userId,
+        device_id: deviceId,
+        value: safeSettings
+      }, { onConflict: 'key,user_id,device_id' })
 
-    let result
-    if (existing.data) {
-      result = await supabaseAdmin
-        .from('ai_ide_settings')
-        .update({ value: safeSettings })
-        .eq('id', existing.data.id)
-    } else {
-      result = await supabaseAdmin
-        .from('ai_ide_settings')
-        .insert({ key: 'app_settings', user_id: userId, value: safeSettings })
-    }
-
-    if (result.error) {
-      return Response.json({ error: result.error.message, code: result.error.code }, { status: 500 })
+    if (error) {
+      return Response.json({ error: error.message, code: error.code }, { status: 500 })
     }
     return Response.json({ success: true })
   } catch {

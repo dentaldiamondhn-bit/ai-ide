@@ -18,6 +18,7 @@ import SettingsPanel from '@/components/SettingsPanel'
 import VSCodePanel from '@/components/VSCodePanel'
 import WelcomeScreen from '@/components/WelcomeScreen'
 import { isFileSystemAccessSupported, mapLocalDirectory, readLocalFile, writeLocalFile, findFileHandle, findDirHandleByPath, createLocalResource, deleteLocalResource, persistDirHandle, restoreDirHandle } from '@/lib/local-fs'
+import { getOrCreateDeviceSession } from '@/lib/device-session'
 import type { LocalFileNode } from '@/lib/local-fs'
 
 function getFileTabIcon(fileName: string) {
@@ -125,7 +126,9 @@ export default function IDEPage() {
           }
         }
 
-        const r = await fetch('/api/db/settings')
+        const r = await fetch('/api/db/settings', {
+          headers: { 'x-device-id': getOrCreateDeviceSession().id }
+        })
         const data = await r.json()
         if (data.settings) {
           if (data.settings.showSidebar !== undefined) setShowSidebar(data.settings.showSidebar)
@@ -183,7 +186,10 @@ export default function IDEPage() {
       }
       fetch('/api/db/settings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-device-id': getOrCreateDeviceSession().id
+        },
         body: JSON.stringify({ settings })
       }).catch(() => {})
     }, 500)

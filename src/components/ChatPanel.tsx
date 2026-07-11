@@ -8,6 +8,7 @@ import {
   User, Code2, Plus, History, PanelRight, Zap, Trash2, Lightbulb, ChevronLeft, Paperclip,
   Layers, FolderOpen, Camera, AlertTriangle, Braces, Wrench, FolderPlus
 } from 'lucide-react'
+import { getOrCreateDeviceSession } from '@/lib/device-session'
 
 interface ExecutionEvent {
   type: 'tool_call' | 'tool_result'
@@ -307,7 +308,10 @@ export default function ChatPanel({ onRefreshFileTree, onReloadFile, onFileModif
   }
 
   useEffect(() => {
-    fetch('/api/db/chats')
+    const device = getOrCreateDeviceSession()
+    fetch('/api/db/chats', {
+      headers: { 'x-device-id': device.id }
+    })
       .then(r => r.json())
       .then(data => {
         const chats = data.chats || []
@@ -329,10 +333,14 @@ export default function ChatPanel({ onRefreshFileTree, onReloadFile, onFileModif
     const title = userMsg?.content?.slice(0, 50) || 'Chat'
     const id = chatId || `chat_${Date.now()}`
     if (!chatId) setChatId(id)
+    const device = getOrCreateDeviceSession()
     try {
       await fetch('/api/db/chats', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-device-id': device.id
+        },
         body: JSON.stringify({ chat: { id, title, messages: msgs } })
       })
     } catch {}
@@ -1013,7 +1021,10 @@ export default function ChatPanel({ onRefreshFileTree, onReloadFile, onFileModif
   }
 
   const loadChat = (id: string, title: string) => {
-    fetch('/api/db/chats')
+    const device = getOrCreateDeviceSession()
+    fetch('/api/db/chats', {
+      headers: { 'x-device-id': device.id }
+    })
       .then(r => r.json())
       .then(data => {
         const chats = data.chats || []
@@ -1029,10 +1040,14 @@ export default function ChatPanel({ onRefreshFileTree, onReloadFile, onFileModif
 
   const deleteChat = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation()
+    const device = getOrCreateDeviceSession()
     try {
       await fetch('/api/db/chats', {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-device-id': device.id
+        },
         body: JSON.stringify({ id })
       })
       setSavedChats(prev => prev.filter(c => c.id !== id))

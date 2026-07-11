@@ -1,7 +1,8 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { Settings, Cpu, Palette, Sliders, ShieldCheck, Check, Folder, FileText, Bot } from 'lucide-react'
+import { Settings, Cpu, Palette, Sliders, ShieldCheck, Check, Folder, FileText, Bot, Laptop, Sparkles } from 'lucide-react'
+import { getOrCreateDeviceSession, updateDeviceNickname, DeviceInfo } from '@/lib/device-session'
 
 interface IDESettings {
   aiModel: string
@@ -51,14 +52,22 @@ export default function SettingsPanel({
   onModelChange,
   onSkillChange,
 }: SettingsPanelProps) {
-  const [activeTab, setActiveTab] = useState<'ai' | 'visuals' | 'system'>('ai')
+  const [activeTab, setActiveTab] = useState<'ai' | 'visuals' | 'system' | 'device'>('ai')
   const [savedSuccess, setSavedSuccess] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [deviceInfo, setDeviceInfo] = useState<DeviceInfo>({ id: 'default', name: 'Generic Station' })
+  const [editDeviceName, setEditDeviceName] = useState('')
 
   const [settings, setSettings] = useState<IDESettings>(DEFAULTS)
 
   useEffect(() => {
-    fetch('/api/db/settings')
+    const session = getOrCreateDeviceSession()
+    setDeviceInfo(session)
+    setEditDeviceName(session.name)
+
+    fetch('/api/db/settings', {
+      headers: { 'x-device-id': session.id }
+    })
       .then(r => r.json())
       .then(data => {
         if (data.settings) {
@@ -80,13 +89,19 @@ export default function SettingsPanel({
 
   const handleSave = async () => {
     try {
-      const res = await fetch('/api/db/settings')
+      const device = getOrCreateDeviceSession()
+      const res = await fetch('/api/db/settings', {
+        headers: { 'x-device-id': device.id }
+      })
       const data = await res.json()
       const existing = data.settings || {}
 
       await fetch('/api/db/settings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-device-id': device.id
+        },
         body: JSON.stringify({
           settings: { ...existing, ...settings, selectedModel, selectedSkill }
         })
@@ -95,6 +110,18 @@ export default function SettingsPanel({
       setTimeout(() => setSavedSuccess(false), 2000)
     } catch {
       alert('Failed to save settings')
+    }
+  }
+
+  const handleUpdateDeviceName = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editDeviceName.trim()) return
+    const updated = updateDeviceNickname(editDeviceName)
+    setDeviceInfo(updated)
+    setSavedSuccess(true)
+    setTimeout(() => setSavedSuccess(false), 2000)
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('device-session-updated'))
     }
   }
 
@@ -127,7 +154,7 @@ export default function SettingsPanel({
 
       {/* Tabs */}
       <div className="flex border-b border-zinc-800/40 bg-zinc-900/10 text-[10px] font-bold text-zinc-500">
-        {(['ai', 'visuals', 'system'] as const).map(tab => (
+        {(['ai', 'visuals', 'system', 'device'] as const).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -135,7 +162,7 @@ export default function SettingsPanel({
               activeTab === tab ? 'text-sky-400 border-sky-500/80 bg-zinc-900/20' : 'border-transparent hover:text-zinc-300'
             }`}
           >
-            {tab === 'ai' ? 'AI Engine' : tab === 'visuals' ? 'Visuals' : 'System'}
+            {tab === 'ai' ? 'AI Engine' : tab === 'visuals' ? 'Visuals' : tab === 'system' ? 'System' : 'Device'}
           </button>
         ))}
       </div>
@@ -315,6 +342,52 @@ export default function SettingsPanel({
                   className="accent-sky-500 rounded"
                 />
               </label>
+            </div>
+          </div>
+        )}
+
+        {/* Device Profiles Tab */}
+        {activeTab === 'device' && (
+          <div className="space-y-4">
+            <div className="p-3 bg-zinc-900/40 border border-zinc-850 rounded-xl space-y-2">
+              <div className="flex items-center gap-2 text-sky-400 text-xs font-semibold">
+                <Laptop size={14} />
+                <span>Active Profile Context</span>
+              </div>
+              <div className="text-[11px] text-zinc-400 space-y-1">
+                <div>Device ID: <code className="text-zinc-500 font-mono select-text text-[10px]">{deviceInfo.id}</code></div>
+                <div>Config Context: <span className="text-zinc-300 font-medium">Isolated</span></div>
+              </div>
+            </div>
+
+            <form onSubmit={handleUpdateDeviceName} className="space-y-3 pt-2">
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 block mb-1.5">
+                  Device Profile Nickname
+                </label>
+                <input
+                  type="text"
+                  value={editDeviceName}
+                  onChange={(e) => setEditDeviceName(e.target.value)}
+                  placeholder="e.g. Crostini Sandbox"
+                  className="w-full bg-zinc-900 border border-zinc-850 rounded px-2.5 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-sky-500/40 font-mono"
+                />
+              </div>
+              <button
+                type="submit"
+                className="w-full py-1.5 bg-sky-600/10 border border-sky-500/30 hover:bg-sky-600/20 text-sky-400 rounded text-xs font-semibold transition-colors"
+              >
+                Update Device Nickname
+              </button>
+            </form>
+
+            <div className="p-3 border border-zinc-800/40 bg-zinc-950/40 rounded-xl space-y-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 flex items-center gap-1">
+                <Sparkles size={11} className="text-sky-400" /> Session Separation
+              </span>
+              <p className="text-[10px] text-zinc-500 leading-relaxed font-sans">
+                Each machine maintains an isolated cache workspace. Custom paths (e.g., Crostini <code className="text-[9px] text-sky-500 font-mono">/home/dental...</code> vs Windows <code className="text-[9px] text-sky-500 font-mono">C:/Users/...</code>) will not overwrite each other.
+              </p>
             </div>
           </div>
         )}

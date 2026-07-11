@@ -28,17 +28,20 @@ async function getUserIdFromCookie(): Promise<string | null> {
   }
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const userId = await getUserIdFromCookie()
   if (!userId) {
     return Response.json({ chats: [] })
   }
+
+  const deviceId = req.headers.get('x-device-id') || 'default'
 
   try {
     const { data, error } = await supabaseAdmin
       .from('ai_ide_chats')
       .select('*')
       .eq('user_id', userId)
+      .eq('device_id', deviceId)
       .order('updated_at', { ascending: false })
 
     if (error) {
@@ -56,6 +59,8 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: 'Not authenticated' }, { status: 401 })
   }
 
+  const deviceId = req.headers.get('x-device-id') || 'default'
+
   try {
     const { chat } = await req.json()
     const id = chat.id || `chat_${Date.now()}`
@@ -65,10 +70,12 @@ export async function POST(req: NextRequest) {
       .upsert({
         id,
         user_id: userId,
-        ...chat,
+        device_id: deviceId,
+        title: chat.title,
+        messages: chat.messages,
         updated_at: new Date().toISOString(),
         created_at: chat.created_at || new Date().toISOString()
-      })
+      }, { onConflict: 'id' })
       .select()
       .single()
 
@@ -87,6 +94,8 @@ export async function DELETE(req: NextRequest) {
     return Response.json({ error: 'Not authenticated' }, { status: 401 })
   }
 
+  const deviceId = req.headers.get('x-device-id') || 'default'
+
   try {
     const { id } = await req.json()
 
@@ -95,6 +104,7 @@ export async function DELETE(req: NextRequest) {
       .delete()
       .eq('id', id)
       .eq('user_id', userId)
+      .eq('device_id', deviceId)
 
     if (error) {
       return Response.json({ error: error.message }, { status: 500 })
