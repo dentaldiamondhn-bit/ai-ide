@@ -30,6 +30,8 @@ interface FileTreeProps {
   fsRootHandle?: FileSystemDirectoryHandle | null
   fsTree?: any[]
   onFsTreeChange?: (tree: any[]) => void
+  expandedFolders?: Set<string>
+  onExpandedFoldersChange?: (folders: Set<string>) => void
 }
 
 interface FileIconDef {
@@ -241,7 +243,7 @@ function getFileIcon(name: string): FileIconDef {
 
 const excludedDirs = ['node_modules', '.git', '.next', '.vscode', '.idea', 'dist', 'out']
 
-export default function FileTree({ onFileSelect, onRefresh, startPath, activeFilePath, lintResults, fsRootHandle, fsTree, onFsTreeChange }: FileTreeProps) {
+export default function FileTree({ onFileSelect, onRefresh, startPath, activeFilePath, lintResults, fsRootHandle, fsTree, onFsTreeChange, expandedFolders, onExpandedFoldersChange }: FileTreeProps) {
   const [tree, setTree] = useState<FileNode[]>([])
   const [rootPath, setRootPath] = useState<string>('')
   const [parentPath, setParentPath] = useState<string | null>(null)
@@ -374,19 +376,24 @@ export default function FileTree({ onFileSelect, onRefresh, startPath, activeFil
           </div>
         )}
         {tree.filter(n => !excludedDirs.includes(n.name)).map((node) => (
-            <NodeItem key={node.path} node={node} onFileSelect={onFileSelect} onRefresh={handleRefresh} depth={0} activeFilePath={activeFilePath} lintResults={lintResults} gitStatuses={gitStatuses} />
+            <NodeItem key={node.path} node={node} onFileSelect={onFileSelect} onRefresh={handleRefresh} depth={0} activeFilePath={activeFilePath} lintResults={lintResults} gitStatuses={gitStatuses} expandedFolders={expandedFolders} onExpandedFoldersChange={onExpandedFoldersChange} />
           ))}
       </div>
     </div>
   )
 }
 
-function NodeItem({ node, onFileSelect, onRefresh, depth, activeFilePath, lintResults, gitStatuses }: { node: FileNode; onFileSelect: (p: string) => void; onRefresh: () => void; depth: number; activeFilePath?: string | null; lintResults?: Record<string, { errors: number; warnings: number }>; gitStatuses?: Record<string, string> }) {
-  const [isOpen, setIsOpen] = useState(false)
+function NodeItem({ node, onFileSelect, onRefresh, depth, activeFilePath, lintResults, gitStatuses, expandedFolders, onExpandedFoldersChange }: { node: FileNode; onFileSelect: (p: string) => void; onRefresh: () => void; depth: number; activeFilePath?: string | null; lintResults?: Record<string, { errors: number; warnings: number }>; gitStatuses?: Record<string, string>; expandedFolders?: Set<string>; onExpandedFoldersChange?: (folders: Set<string>) => void }) {
+  const isOpen = expandedFolders ? expandedFolders.has(node.path) : false
 
   const handleClick = () => {
     if (node.isDirectory) {
-      setIsOpen(!isOpen)
+      if (onExpandedFoldersChange && expandedFolders) {
+        const next = new Set(expandedFolders)
+        if (next.has(node.path)) next.delete(node.path)
+        else next.add(node.path)
+        onExpandedFoldersChange(next)
+      }
     } else {
       onFileSelect(node.path)
     }
@@ -549,7 +556,7 @@ function NodeItem({ node, onFileSelect, onRefresh, depth, activeFilePath, lintRe
       {node.isDirectory && isOpen && node.children && (
         <div className="relative">
           {node.children.filter((n: FileNode) => !excludedDirs.includes(n.name)).map((child: FileNode) => (
-            <NodeItem key={child.path} node={child} onFileSelect={onFileSelect} onRefresh={onRefresh} depth={depth + 1} activeFilePath={activeFilePath} lintResults={lintResults} gitStatuses={gitStatuses} />
+            <NodeItem key={child.path} node={child} onFileSelect={onFileSelect} onRefresh={onRefresh} depth={depth + 1} activeFilePath={activeFilePath} lintResults={lintResults} gitStatuses={gitStatuses} expandedFolders={expandedFolders} onExpandedFoldersChange={onExpandedFoldersChange} />
           ))}
         </div>
       )}

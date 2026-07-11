@@ -86,6 +86,7 @@ export default function IDEPage() {
   const [activeActivityTab, setActiveActivityTab] = useState('files')
   const [fsRootHandle, setFsRootHandle] = useState<FileSystemDirectoryHandle | null>(null)
   const [fsTree, setFsTree] = useState<LocalFileNode[]>([])
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
   const activeTabContent = tabs.find(t => t.id === activeTabId)
 
   const triggerLint = useCallback(async (filePath: string, content?: string) => {
@@ -125,6 +126,7 @@ export default function IDEPage() {
           }
           if (data.settings.selectedModel !== undefined) setSelectedModel(data.settings.selectedModel)
           if (data.settings.selectedSkill !== undefined) setSelectedSkill(data.settings.selectedSkill)
+          if (data.settings.expandedFolders !== undefined) setExpandedFolders(new Set(data.settings.expandedFolders))
         } else {
           // No Supabase settings yet — use defaults
         }
@@ -146,7 +148,8 @@ export default function IDEPage() {
         selectedModel,
         selectedSkill,
         activeTabId,
-        tabs: tabs.map(t => ({ id: t.id, name: t.name, path: t.path, language: t.language }))
+        tabs: tabs.map(t => ({ id: t.id, name: t.name, path: t.path, language: t.language })),
+        expandedFolders: Array.from(expandedFolders)
       }
       fetch('/api/db/settings', {
         method: 'POST',
@@ -155,7 +158,7 @@ export default function IDEPage() {
       }).catch(() => {})
     }, 500)
     return () => clearTimeout(timeout)
-  }, [showSidebar, showTerminal, showChat, showEditor, useVSCode, fileTreePath, selectedModel, selectedSkill, activeTabId, tabs, settingsLoaded])
+  }, [showSidebar, showTerminal, showChat, showEditor, useVSCode, fileTreePath, selectedModel, selectedSkill, activeTabId, tabs, expandedFolders, settingsLoaded])
 
   const toggleSidebar = useCallback(() => setShowSidebar(p => !p), [])
   const toggleTerminal = useCallback(() => setShowTerminal(p => !p), [])
@@ -477,7 +480,7 @@ export default function IDEPage() {
                         onSkillChange={setSelectedSkill}
                       />
                     ) : (
-                      settingsLoaded && <FileTree key={fileTreeKey} startPath={fileTreePath} activeFilePath={activeTabContent?.path || null} onFileSelect={handleSelectFile} onRefresh={handleRefreshFileTree} lintResults={lintResults} fsRootHandle={fsRootHandle} fsTree={fsTree} onFsTreeChange={setFsTree} />
+                      settingsLoaded && <FileTree key={fileTreeKey} startPath={fileTreePath} activeFilePath={activeTabContent?.path || null} onFileSelect={handleSelectFile} onRefresh={handleRefreshFileTree} lintResults={lintResults} fsRootHandle={fsRootHandle} fsTree={fsTree} onFsTreeChange={setFsTree} expandedFolders={expandedFolders} onExpandedFoldersChange={setExpandedFolders} />
                     )}
                   </div>
                 </Panel>
