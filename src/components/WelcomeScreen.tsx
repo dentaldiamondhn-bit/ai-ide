@@ -19,6 +19,20 @@ export default function WelcomeScreen({
   onModelChange
 }: WelcomeScreenProps) {
   const [recentFolders, setRecentFolders] = useState<string[]>([])
+  const [detectedHome, setDetectedHome] = useState<string>('/home')
+  const [osLabel, setOsLabel] = useState<string>('System')
+
+  useEffect(() => {
+    fetch('/api/env')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          setDetectedHome(data.defaultWorkspaceRoot)
+          setOsLabel(data.osLabel)
+        }
+      })
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     try {
@@ -30,7 +44,7 @@ export default function WelcomeScreen({
   }, [])
 
   const handleOpenFolderClick = () => {
-    const path = prompt('Enter directory path to open:', '/home/dentaldiamondhn')
+    const path = prompt(`Enter directory path to open (${osLabel} detected):`, detectedHome)
     if (path) onOpenFolder(path)
   }
 
