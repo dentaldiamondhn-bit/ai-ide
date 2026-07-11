@@ -112,8 +112,15 @@ export default function TerminalPanel({ cwd, lintResults }: TerminalPanelProps) 
 
     const wsPort = process.env.NEXT_PUBLIC_WS_PORT || '3002'
     const hostname = typeof window !== 'undefined' ? window.location.hostname : 'localhost'
+    const wsProtocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss' : 'ws'
     const cwdParam = cwdPath ? `?cwd=${encodeURIComponent(cwdPath)}` : ''
-    const ws = new WebSocket(`ws://${hostname}:${wsPort}${cwdParam}`)
+    let ws: WebSocket
+    try {
+      ws = new WebSocket(`${wsProtocol}://${hostname}:${wsPort}${cwdParam}`)
+    } catch {
+      setShells(prev => prev.map(s => s.id === id ? { ...s, output: s.output + 'Terminal server not available (WebSocket connection failed)\n' } : s))
+      return
+    }
 
     let initParsed = false
     ws.onopen = () => {
@@ -133,7 +140,7 @@ export default function TerminalPanel({ cwd, lintResults }: TerminalPanelProps) 
       setShells(prev => prev.map(s => s.id === id ? { ...s, output: s.output + stripAnsi(data) } : s))
     }
     ws.onerror = () => {
-      setShells(prev => prev.map(s => s.id === id ? { ...s, output: s.output + 'Error: Terminal server not reachable\n' } : s))
+      setShells(prev => prev.map(s => s.id === id ? { ...s, output: s.output + 'Terminal server not reachable\n' } : s))
     }
     ws.onclose = () => {
       setShells(prev => prev.map(s => s.id === id ? { ...s, connected: false } : s))
@@ -286,8 +293,16 @@ export default function TerminalPanel({ cwd, lintResults }: TerminalPanelProps) 
       setShells(prev => prev.map(s => s.id === activeShellId ? { ...s, output: '', connected: false, ws: null } : s))
       const wsPort = process.env.NEXT_PUBLIC_WS_PORT || '3002'
       const hostname = typeof window !== 'undefined' ? window.location.hostname : 'localhost'
+      const wsProtocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss' : 'ws'
       const cwdParam = cwd ? `?cwd=${encodeURIComponent(cwd)}` : ''
-      const ws = new WebSocket(`ws://${hostname}:${wsPort}${cwdParam}`)
+      let ws: WebSocket
+      try {
+        ws = new WebSocket(`${wsProtocol}://${hostname}:${wsPort}${cwdParam}`)
+      } catch {
+        setShells(prev => prev.map(s => s.id === activeShellId ? { ...s, output: 'Terminal server not available (WebSocket connection failed)\n' } : s))
+        setRefreshing(null)
+        return
+      }
       let initParsed = false
       ws.onopen = () => {
         setShells(prev => prev.map(s => s.id === activeShellId ? { ...s, connected: true, ws } : s))

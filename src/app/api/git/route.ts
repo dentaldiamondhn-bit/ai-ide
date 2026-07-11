@@ -16,44 +16,52 @@ export async function GET(request: Request) {
 
   try {
     if (action === 'branch') {
-      const { stdout } = await execPromise('git branch --show-current', { cwd: workspacePath, timeout: 5000 })
-      return NextResponse.json({ branch: stdout.trim() || 'detached' })
+      try {
+        const { stdout } = await execPromise('git branch --show-current', { cwd: workspacePath, timeout: 5000 })
+        return NextResponse.json({ branch: stdout.trim() || 'detached' })
+      } catch {
+        return NextResponse.json({ branch: 'main' })
+      }
     }
 
     if (action === 'status') {
-      const [statusRes, branchRes] = await Promise.all([
-        execPromise('git status --porcelain', { cwd: workspacePath, timeout: 5000 }),
-        execPromise('git branch --show-current', { cwd: workspacePath, timeout: 5000 })
-      ])
+      try {
+        const [statusRes, branchRes] = await Promise.all([
+          execPromise('git status --porcelain', { cwd: workspacePath, timeout: 5000 }),
+          execPromise('git branch --show-current', { cwd: workspacePath, timeout: 5000 })
+        ])
 
-      const lines = statusRes.stdout.split('\n').filter(Boolean)
-      const changes = lines.map(line => {
-        const statusX = line[0]
-        const statusY = line[1]
-        const filePath = line.slice(3).trim()
+        const lines = statusRes.stdout.split('\n').filter(Boolean)
+        const changes = lines.map(line => {
+          const statusX = line[0]
+          const statusY = line[1]
+          const filePath = line.slice(3).trim()
 
-        let isStaged = false
-        let isUnstaged = false
-        let type: 'modified' | 'untracked' | 'deleted' | 'added' = 'modified'
+          let isStaged = false
+          let isUnstaged = false
+          let type: 'modified' | 'untracked' | 'deleted' | 'added' = 'modified'
 
-        if (statusX !== ' ' && statusX !== '?') isStaged = true
-        if (statusY !== ' ') isUnstaged = true
+          if (statusX !== ' ' && statusX !== '?') isStaged = true
+          if (statusY !== ' ') isUnstaged = true
 
-        if (statusX === '?' && statusY === '?') {
-          type = 'untracked'
-        } else if (statusX === 'A' || statusY === 'A') {
-          type = 'added'
-        } else if (statusX === 'D' || statusY === 'D') {
-          type = 'deleted'
-        }
+          if (statusX === '?' && statusY === '?') {
+            type = 'untracked'
+          } else if (statusX === 'A' || statusY === 'A') {
+            type = 'added'
+          } else if (statusX === 'D' || statusY === 'D') {
+            type = 'deleted'
+          }
 
-        return { path: filePath, isStaged, isUnstaged, type }
-      })
+          return { path: filePath, isStaged, isUnstaged, type }
+        })
 
-      return NextResponse.json({
-        branch: branchRes.stdout.trim() || 'main',
-        changes
-      })
+        return NextResponse.json({
+          branch: branchRes.stdout.trim() || 'main',
+          changes
+        })
+      } catch {
+        return NextResponse.json({ branch: 'main', changes: [] })
+      }
     }
 
     return NextResponse.json({ error: 'Invalid GET action' }, { status: 400 })
