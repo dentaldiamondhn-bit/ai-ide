@@ -13,7 +13,9 @@ async function getAuthenticatedUserId(): Promise<string | null> {
       cookies: {
         getAll() { return cookieStore.getAll() },
         setAll(cookiesToSet) {
-          try { cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options)) } catch {}
+          try {
+            cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options))
+          } catch {}
         },
       },
     })
@@ -48,7 +50,7 @@ export async function GET(req: NextRequest) {
 
   const deviceId = req.headers.get('x-device-id') || 'default'
 
-  // Try with device_id column first
+  // Step 1: Exact user + key + device match
   try {
     const { data, error } = await supabaseAdmin
       .from('ai_ide_settings')
@@ -56,24 +58,28 @@ export async function GET(req: NextRequest) {
       .eq('key', 'app_settings')
       .eq('user_id', userId)
       .eq('device_id', deviceId)
-      .single()
+      .maybeSingle()
 
-    if (!error && data) return Response.json({ settings: data.value || null })
+    if (!error && data) {
+      return Response.json({ settings: data.value || null })
+    }
   } catch {}
 
-  // Fallback: no device_id column yet
+  // Step 2: Fallback — load any existing settings (use .limit(1) to avoid PGRST117)
   try {
-    const { data } = await supabaseAdmin
+    const { data, error } = await supabaseAdmin
       .from('ai_ide_settings')
       .select('value')
       .eq('key', 'app_settings')
       .eq('user_id', userId)
-      .single()
+      .limit(1)
 
-    return Response.json({ settings: data?.value || null })
-  } catch {
-    return Response.json({ settings: null })
-  }
+    if (!error && data && data.length > 0) {
+      return Response.json({ settings: data[0].value || null })
+    }
+  } catch {}
+
+  return Response.json({ settings: null })
 }
 
 export async function POST(req: NextRequest) {
@@ -92,7 +98,7 @@ export async function POST(req: NextRequest) {
       }))
     }
 
-    // Try with device_id first
+    // Try device-specific upsert
     try {
       const existing = await supabaseAdmin
         .from('ai_ide_settings')
@@ -119,7 +125,7 @@ export async function POST(req: NextRequest) {
       if (result.error) throw result.error
       return Response.json({ success: true })
     } catch {
-      // Fallback: no device_id column — use plain user_id
+      // Fallback for databases lacking device_id column
       const existing = await supabaseAdmin
         .from('ai_ide_settings')
         .select('id')
