@@ -50,6 +50,7 @@ export default function CodeEditor({ value, onChange, language, filePath, height
   }
 
   function applyGutterDecorations(editor: any, monaco: Monaco, original: string, current: string) {
+    if (!original || !current) return
     const oldLines = original.split('\n')
     const newLines = current.split('\n')
     const maxLen = Math.max(oldLines.length, newLines.length)
@@ -83,7 +84,7 @@ export default function CodeEditor({ value, onChange, language, filePath, height
   }
 
   useEffect(() => {
-    if (editorRef.current && monacoRef.current) {
+    if (editorRef.current && monacoRef.current && value) {
       originalValueRef.current = value
       applyGutterDecorations(editorRef.current, monacoRef.current, value, value)
     }
