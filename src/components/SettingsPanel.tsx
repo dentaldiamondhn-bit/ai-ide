@@ -1,7 +1,7 @@
 'use client'
 
-import React, { useState } from 'react'
-import { Settings, Cpu, Palette, Sliders, ShieldCheck, Check } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { Settings, Cpu, Palette, Sliders, ShieldCheck, Check, Folder, FileText, Bot } from 'lucide-react'
 
 interface IDESettings {
   aiModel: string
@@ -13,27 +13,101 @@ interface IDESettings {
   gutterDiffs: boolean
 }
 
-export default function SettingsPanel() {
+const DEFAULTS: IDESettings = {
+  aiModel: 'minimaxai/minimax-m3',
+  telemetryEnabled: true,
+  autoSave: true,
+  approvalThreshold: 'always',
+  autoCommitOnSave: false,
+  terminalTheme: 'Dracula Dark',
+  gutterDiffs: true
+}
+
+interface SettingsPanelProps {
+  currentPath: string
+  openTabs: { id: string; name: string; path: string }[]
+  activeTabId: string
+  selectedModel: string
+  selectedSkill: string
+  onModelChange: (model: string) => void
+  onSkillChange: (skill: string) => void
+}
+
+const MODELS = [
+  { value: 'minimaxai/minimax-m3', label: 'MiniMax M3 (Default)' },
+  { value: 'nvidia/llama-3.3-nemotron-super-49b-v1', label: 'Nemotron Super 49B' },
+  { value: 'nvidia/llama-3.1-nemotron-70b-instruct', label: 'Nemotron 70B' },
+  { value: 'qwen/qwen3-coder-480b-a35b-instruct', label: 'Qwen3 Coder 480B' },
+  { value: 'deepseek-ai/deepseek-r1', label: 'DeepSeek R1' },
+  { value: 'meta/llama-3.3-70b-instruct', label: 'Llama 3.3 70B' },
+]
+
+export default function SettingsPanel({
+  currentPath,
+  openTabs,
+  activeTabId,
+  selectedModel,
+  selectedSkill,
+  onModelChange,
+  onSkillChange,
+}: SettingsPanelProps) {
   const [activeTab, setActiveTab] = useState<'ai' | 'visuals' | 'system'>('ai')
   const [savedSuccess, setSavedSuccess] = useState(false)
+  const [loading, setLoading] = useState(true)
 
-  const [settings, setSettings] = useState<IDESettings>({
-    aiModel: 'minimaxai/minimax-m3',
-    telemetryEnabled: true,
-    autoSave: true,
-    approvalThreshold: 'always',
-    autoCommitOnSave: false,
-    terminalTheme: 'Dracula Dark',
-    gutterDiffs: true
-  })
+  const [settings, setSettings] = useState<IDESettings>(DEFAULTS)
 
-  const handleSave = () => {
-    localStorage.setItem('ide-settings', JSON.stringify(settings))
-    setSavedSuccess(true)
-    setTimeout(() => setSavedSuccess(false), 2000)
+  useEffect(() => {
+    fetch('/api/db/settings')
+      .then(r => r.json())
+      .then(data => {
+        if (data.settings) {
+          setSettings(s => ({
+            ...s,
+            ...(data.settings.aiModel !== undefined && { aiModel: data.settings.aiModel }),
+            ...(data.settings.telemetryEnabled !== undefined && { telemetryEnabled: data.settings.telemetryEnabled }),
+            ...(data.settings.autoSave !== undefined && { autoSave: data.settings.autoSave }),
+            ...(data.settings.approvalThreshold !== undefined && { approvalThreshold: data.settings.approvalThreshold }),
+            ...(data.settings.autoCommitOnSave !== undefined && { autoCommitOnSave: data.settings.autoCommitOnSave }),
+            ...(data.settings.terminalTheme !== undefined && { terminalTheme: data.settings.terminalTheme }),
+            ...(data.settings.gutterDiffs !== undefined && { gutterDiffs: data.settings.gutterDiffs }),
+          }))
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  const handleSave = async () => {
+    try {
+      const res = await fetch('/api/db/settings')
+      const data = await res.json()
+      const existing = data.settings || {}
+
+      await fetch('/api/db/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          settings: { ...existing, ...settings, selectedModel, selectedSkill }
+        })
+      })
+      setSavedSuccess(true)
+      setTimeout(() => setSavedSuccess(false), 2000)
+    } catch {
+      alert('Failed to save settings')
+    }
   }
 
   const update = (patch: Partial<IDESettings>) => setSettings(s => ({ ...s, ...patch }))
+
+  if (loading) {
+    return (
+      <div className="flex flex-col h-full bg-zinc-950 text-zinc-300 items-center justify-center">
+        <span className="w-4 h-4 border-2 border-sky-500/20 border-t-sky-400 rounded-full animate-spin" />
+        <span className="text-[10px] text-zinc-500 mt-2">Loading settings...</span>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col h-full bg-zinc-950 text-zinc-300 font-sans select-none">
@@ -72,22 +146,69 @@ export default function SettingsPanel() {
         {/* AI Tab */}
         {activeTab === 'ai' && (
           <div className="space-y-4">
+
+            {/* Current State */}
+            <div className="space-y-3">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 flex items-center gap-1">
+                <Folder size={12} className="text-zinc-400" /> Workspace
+              </label>
+              <div className="bg-zinc-900 border border-zinc-800 rounded px-3 py-2 text-[11px] text-zinc-400 font-mono truncate">
+                {currentPath || 'No folder open'}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 flex items-center gap-1">
+                <FileText size={12} className="text-zinc-400" /> Open Files ({openTabs.length})
+              </label>
+              <div className="bg-zinc-900 border border-zinc-800 rounded p-2 max-h-32 overflow-y-auto space-y-1">
+                {openTabs.length === 0 ? (
+                  <span className="text-[10px] text-zinc-600 italic">No files open</span>
+                ) : (
+                  openTabs.map(tab => (
+                    <div
+                      key={tab.id}
+                      className={`text-[10px] font-mono px-2 py-0.5 rounded truncate ${
+                        tab.id === activeTabId
+                          ? 'bg-sky-500/10 text-sky-400 border-l-2 border-sky-500'
+                          : 'text-zinc-500'
+                      }`}
+                    >
+                      {tab.name}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 flex items-center gap-1">
+                <Bot size={12} className="text-zinc-400" /> Active Agent
+              </label>
+              <div className="bg-zinc-900 border border-zinc-800 rounded px-3 py-2 text-[11px] text-zinc-400 font-mono truncate">
+                {selectedSkill || 'No agent selected'}
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-zinc-800/40" />
+
+            {/* Model Select */}
             <div>
               <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 flex items-center gap-1 mb-1.5">
                 <Cpu size={12} className="text-zinc-400" /> Active Model
               </label>
               <select
-                value={settings.aiModel}
-                onChange={(e) => update({ aiModel: e.target.value })}
+                value={selectedModel}
+                onChange={(e) => {
+                  onModelChange(e.target.value)
+                  update({ aiModel: e.target.value })
+                }}
                 className="w-full bg-zinc-900 border border-zinc-800 rounded px-2.5 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-sky-500/40"
               >
                 <optgroup label="NVIDIA Hosted">
-                  <option value="minimaxai/minimax-m3">MiniMax M3 (Default)</option>
-                  <option value="nvidia/llama-3.3-nemotron-super-49b-v1">Nemotron Super 49B</option>
-                  <option value="nvidia/llama-3.1-nemotron-70b-instruct">Nemotron 70B</option>
-                  <option value="qwen/qwen3-coder-480b-a35b-instruct">Qwen3 Coder 480B</option>
-                  <option value="deepseek-ai/deepseek-r1">DeepSeek R1</option>
-                  <option value="meta/llama-3.3-70b-instruct">Llama 3.3 70B</option>
+                  {MODELS.map(m => (
+                    <option key={m.value} value={m.value}>{m.label}</option>
+                  ))}
                 </optgroup>
               </select>
             </div>

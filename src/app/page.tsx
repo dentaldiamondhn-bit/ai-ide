@@ -121,6 +121,8 @@ export default function IDEPage() {
           }
           if (data.settings.selectedModel !== undefined) setSelectedModel(data.settings.selectedModel)
           if (data.settings.selectedSkill !== undefined) setSelectedSkill(data.settings.selectedSkill)
+        } else {
+          // No Supabase settings yet — use defaults
         }
       })
       .catch(() => {})
@@ -355,7 +357,15 @@ export default function IDEPage() {
                     ) : activeActivityTab === 'deepwiki' ? (
                       <CodeWikiPanel />
                     ) : activeActivityTab === 'settings' ? (
-                      <SettingsPanel />
+                      <SettingsPanel
+                        currentPath={fileTreePath || ''}
+                        openTabs={tabs}
+                        activeTabId={activeTabId}
+                        selectedModel={selectedModel}
+                        selectedSkill={selectedSkill}
+                        onModelChange={setSelectedModel}
+                        onSkillChange={setSelectedSkill}
+                      />
                     ) : (
                       settingsLoaded && <FileTree key={fileTreeKey} startPath={fileTreePath} activeFilePath={activeTabContent?.path || null} onFileSelect={handleSelectFile} onRefresh={handleRefreshFileTree} lintResults={lintResults} />
                     )}
