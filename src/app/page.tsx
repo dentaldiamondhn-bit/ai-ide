@@ -111,15 +111,17 @@ export default function IDEPage() {
 
   useEffect(() => {
     const loadSettings = async () => {
+      let restoredHandle: FileSystemDirectoryHandle | null = null
+      let restoredTree: any[] = []
       try {
         // Restore FS directory handle from IndexedDB first
         if (isFileSystemAccessSupported()) {
-          const restored = await restoreDirHandle()
-          if (restored) {
-            const tree = await mapLocalDirectory(restored, restored.name)
-            setFsRootHandle(restored)
-            setFsTree(tree)
-            setFileTreePath(restored.name)
+          restoredHandle = await restoreDirHandle()
+          if (restoredHandle) {
+            restoredTree = await mapLocalDirectory(restoredHandle, restoredHandle.name)
+            setFsRootHandle(restoredHandle)
+            setFsTree(restoredTree)
+            setFileTreePath(restoredHandle.name)
           }
         }
 
@@ -131,7 +133,7 @@ export default function IDEPage() {
           if (data.settings.showChat !== undefined) setShowChat(data.settings.showChat)
           if (data.settings.showEditor !== undefined) setShowEditor(data.settings.showEditor)
           if (data.settings.useVSCode !== undefined) setUseVSCode(data.settings.useVSCode)
-          if (data.settings.fileTreePath !== undefined && !restored) setFileTreePath(data.settings.fileTreePath)
+          if (data.settings.fileTreePath !== undefined && !restoredHandle) setFileTreePath(data.settings.fileTreePath)
           if (data.settings.selectedModel !== undefined) setSelectedModel(data.settings.selectedModel)
           if (data.settings.selectedSkill !== undefined) setSelectedSkill(data.settings.selectedSkill)
           if (data.settings.expandedFolders !== undefined) setExpandedFolders(new Set(data.settings.expandedFolders))
@@ -139,9 +141,9 @@ export default function IDEPage() {
             const restoredTabs: Tab[] = []
             for (const tab of data.settings.tabs) {
               let content = ''
-              if (restored && tree.length > 0) {
+              if (restoredHandle && restoredTree.length > 0) {
                 try {
-                  const fileHandle = findFileHandle(tree, tab.path)
+                  const fileHandle = findFileHandle(restoredTree, tab.path)
                   if (fileHandle) content = await readLocalFile(fileHandle)
                 } catch {}
               }
