@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { cookies } from 'next/headers'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase'
 
 async function getUserIdFromCookie(): Promise<string | null> {
@@ -17,7 +18,6 @@ async function getUserIdFromCookie(): Promise<string | null> {
     const accessToken = session?.access_token
     if (!accessToken) return null
 
-    // Decode JWT payload to get user ID
     const parts = accessToken.split('.')
     if (parts.length !== 3) return null
     const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
@@ -29,8 +29,20 @@ async function getUserIdFromCookie(): Promise<string | null> {
   }
 }
 
+async function resolveUserId(): Promise<string | null> {
+  // Method 1: Try @supabase/ssr getUser()
+  try {
+    const supabase = await createServerSupabaseClient()
+    const { data: { user }, error } = await supabase.auth.getUser()
+    if (!error && user?.id) return user.id
+  } catch {}
+
+  // Method 2: Parse JWT from cookie directly
+  return getUserIdFromCookie()
+}
+
 export async function GET() {
-  const userId = await getUserIdFromCookie()
+  const userId = await resolveUserId()
   if (!userId) {
     return Response.json({ settings: null })
   }
@@ -53,7 +65,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const userId = await getUserIdFromCookie()
+  const userId = await resolveUserId()
   if (!userId) {
     return Response.json({ success: true })
   }
