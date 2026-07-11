@@ -131,24 +131,26 @@ export default function IDEPage() {
 
   useEffect(() => {
     if (!settingsLoaded) return
-    const settings = { 
-      showSidebar, 
-      showTerminal, 
-      showChat, 
-      showEditor, 
-      useVSCode, 
-      fileTreePath, 
-      selectedModel,
-      selectedSkill,
-      tabs,
-      activeTabId
-    }
-    fetch('/api/db/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ settings })
-    }).catch(() => {})
-  }, [showSidebar, showTerminal, showChat, showEditor, useVSCode, fileTreePath, selectedModel, selectedSkill, tabs, activeTabId, settingsLoaded])
+    const timeout = setTimeout(() => {
+      const settings = { 
+        showSidebar, 
+        showTerminal, 
+        showChat, 
+        showEditor, 
+        useVSCode, 
+        fileTreePath, 
+        selectedModel,
+        selectedSkill,
+        activeTabId
+      }
+      fetch('/api/db/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings })
+      }).catch(() => {})
+    }, 500)
+    return () => clearTimeout(timeout)
+  }, [showSidebar, showTerminal, showChat, showEditor, useVSCode, fileTreePath, selectedModel, selectedSkill, activeTabId, settingsLoaded])
 
   const toggleSidebar = useCallback(() => setShowSidebar(p => !p), [])
   const toggleTerminal = useCallback(() => setShowTerminal(p => !p), [])
