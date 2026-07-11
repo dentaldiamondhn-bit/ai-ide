@@ -87,17 +87,28 @@ export async function POST(req: NextRequest) {
       }))
     }
 
-    const { error } = await supabaseAdmin
+    const existing = await supabaseAdmin
       .from('ai_ide_settings')
-      .upsert({
-        key: 'app_settings',
-        user_id: userId,
-        device_id: deviceId,
-        value: safeSettings
-      }, { onConflict: 'key,user_id,device_id' })
+      .select('id')
+      .eq('key', 'app_settings')
+      .eq('user_id', userId)
+      .eq('device_id', deviceId)
+      .maybeSingle()
 
-    if (error) {
-      return Response.json({ error: error.message, code: error.code }, { status: 500 })
+    let result
+    if (existing.data) {
+      result = await supabaseAdmin
+        .from('ai_ide_settings')
+        .update({ value: safeSettings })
+        .eq('id', existing.data.id)
+    } else {
+      result = await supabaseAdmin
+        .from('ai_ide_settings')
+        .insert({ key: 'app_settings', user_id: userId, device_id: deviceId, value: safeSettings })
+    }
+
+    if (result.error) {
+      return Response.json({ error: result.error.message, code: result.error.code }, { status: 500 })
     }
     return Response.json({ success: true })
   } catch {
