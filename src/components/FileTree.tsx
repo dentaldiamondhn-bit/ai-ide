@@ -27,6 +27,9 @@ interface FileTreeProps {
   startPath?: string
   activeFilePath?: string | null
   lintResults?: Record<string, { errors: number; warnings: number }>
+  fsRootHandle?: FileSystemDirectoryHandle | null
+  fsTree?: any[]
+  onFsTreeChange?: (tree: any[]) => void
 }
 
 interface FileIconDef {
@@ -238,7 +241,7 @@ function getFileIcon(name: string): FileIconDef {
 
 const excludedDirs = ['node_modules', '.git', '.next', '.vscode', '.idea', 'dist', 'out']
 
-export default function FileTree({ onFileSelect, onRefresh, startPath, activeFilePath, lintResults }: FileTreeProps) {
+export default function FileTree({ onFileSelect, onRefresh, startPath, activeFilePath, lintResults, fsRootHandle, fsTree, onFsTreeChange }: FileTreeProps) {
   const [tree, setTree] = useState<FileNode[]>([])
   const [rootPath, setRootPath] = useState<string>('')
   const [parentPath, setParentPath] = useState<string | null>(null)
@@ -247,6 +250,14 @@ export default function FileTree({ onFileSelect, onRefresh, startPath, activeFil
   const [gitBranch, setGitBranch] = useState('')
 
   const fetchTree = async (pathTarget?: string) => {
+    // If we have FS Access API tree, use it directly
+    if (fsRootHandle && fsTree && fsTree.length > 0) {
+      setTree(fsTree as any)
+      setRootPath(fsRootHandle.name)
+      setParentPath(null)
+      setLoading(false)
+      return
+    }
     setLoading(true)
     try {
       // Try WebSocket first (local file access from deployed app)
@@ -293,12 +304,25 @@ export default function FileTree({ onFileSelect, onRefresh, startPath, activeFil
   }
 
   useEffect(() => {
-    if (startPath) fetchTree(startPath)
-    else fetchTree()
+    if (fsRootHandle && fsTree && fsTree.length > 0) {
+      setTree(fsTree as any)
+      setRootPath(fsRootHandle.name)
+      setParentPath(null)
+      setLoading(false)
+    } else if (startPath) {
+      fetchTree(startPath)
+    } else {
+      fetchTree()
+    }
     fetchGitStatus()
-  }, [startPath])
+  }, [startPath, fsRootHandle, fsTree])
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
+    if (fsRootHandle && onFsTreeChange) {
+      const { mapLocalDirectory } = await import('@/lib/local-fs')
+      const updated = await mapLocalDirectory(fsRootHandle, fsRootHandle.name)
+      onFsTreeChange(updated)
+    }
     fetchTree()
     fetchGitStatus()
     onRefresh?.()

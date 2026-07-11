@@ -17,6 +17,8 @@ import CodeWikiPanel from '@/components/CodeWikiPanel'
 import SettingsPanel from '@/components/SettingsPanel'
 import VSCodePanel from '@/components/VSCodePanel'
 import WelcomeScreen from '@/components/WelcomeScreen'
+import { isFileSystemAccessSupported, mapLocalDirectory, readLocalFile, writeLocalFile, findFileHandle, findDirHandleByPath, createLocalResource, deleteLocalResource } from '@/lib/local-fs'
+import type { LocalFileNode } from '@/lib/local-fs'
 
 function getFileTabIcon(fileName: string) {
   const ext = fileName.split('.').pop()?.toLowerCase()
@@ -82,6 +84,8 @@ export default function IDEPage() {
   const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [animEvent, setAnimEvent] = useState<FileModificationEvent | null>(null)
   const [activeActivityTab, setActiveActivityTab] = useState('files')
+  const [fsRootHandle, setFsRootHandle] = useState<FileSystemDirectoryHandle | null>(null)
+  const [fsTree, setFsTree] = useState<LocalFileNode[]>([])
   const activeTabContent = tabs.find(t => t.id === activeTabId)
 
   const triggerLint = useCallback(async (filePath: string, content?: string) => {
@@ -158,7 +162,24 @@ export default function IDEPage() {
   const toggleChat = useCallback(() => setShowChat(p => !p), [])
   const toggleEditor = useCallback(() => setShowEditor(p => !p), [])
 
-  const handleOpenFolder = useCallback((path: string) => {
+  const handleOpenFolder = useCallback(async (path: string) => {
+    // Try File System Access API first (direct local file access, no server needed)
+    if (!path && isFileSystemAccessSupported()) {
+      try {
+        const dirHandle = await (window as any).showDirectoryPicker({ mode: 'readwrite' })
+        const tree = await mapLocalDirectory(dirHandle, dirHandle.name)
+        setFsRootHandle(dirHandle)
+        setFsTree(tree)
+        setFileTreePath(dirHandle.name)
+        setFileTreeKey(k => k + 1)
+        return
+      } catch (err) {
+        // User cancelled picker — fall through to WebSocket/HTTP path
+      }
+    }
+    // Fall back to WebSocket / HTTP API path
+    setFsRootHandle(null)
+    setFsTree([])
     setFileTreePath(path || undefined)
     setFileTreeKey(k => k + 1)
     if (path) {
@@ -177,15 +198,24 @@ export default function IDEPage() {
   const handleSelectFile = async (path: string) => {
     try {
       let content = ''
-      // Try WebSocket first (local file access from deployed app)
-      try {
-        const { wsReadFile } = await import('@/lib/ws-file-client')
-        const wsContent = await wsReadFile(path)
-        if (wsContent !== null) {
-          content = wsContent
-        }
-      } catch {}
-      // Fall back to HTTP API (works in local dev)
+      // Try File System Access API first
+      if (fsRootHandle && fsTree.length > 0) {
+        try {
+          const fileHandle = findFileHandle(fsTree, path)
+          if (fileHandle) {
+            content = await readLocalFile(fileHandle)
+          }
+        } catch {}
+      }
+      // Try WebSocket next
+      if (!content) {
+        try {
+          const { wsReadFile } = await import('@/lib/ws-file-client')
+          const wsContent = await wsReadFile(path)
+          if (wsContent !== null) content = wsContent
+        } catch {}
+      }
+      // Fall back to HTTP API
       if (!content) {
         const res = await fetch(`/api/files?action=read&path=${encodeURIComponent(path)}`)
         if (!res.ok) {
@@ -222,11 +252,19 @@ export default function IDEPage() {
   const handleReloadFile = async (filePath: string) => {
     try {
       let content = ''
-      try {
-        const { wsReadFile } = await import('@/lib/ws-file-client')
-        const wsContent = await wsReadFile(filePath)
-        if (wsContent !== null) content = wsContent
-      } catch {}
+      if (fsRootHandle && fsTree.length > 0) {
+        try {
+          const fileHandle = findFileHandle(fsTree, filePath)
+          if (fileHandle) content = await readLocalFile(fileHandle)
+        } catch {}
+      }
+      if (!content) {
+        try {
+          const { wsReadFile } = await import('@/lib/ws-file-client')
+          const wsContent = await wsReadFile(filePath)
+          if (wsContent !== null) content = wsContent
+        } catch {}
+      }
       if (!content) {
         const res = await fetch(`/api/files?action=read&path=${encodeURIComponent(filePath)}`)
         if (!res.ok) throw new Error('Failed to reload file')
@@ -252,7 +290,17 @@ export default function IDEPage() {
     const fileContent = content || activeTab.content
 
     try {
-      // Try WebSocket first
+      // Try File System Access API first
+      if (fsRootHandle && fsTree.length > 0) {
+        try {
+          const fileHandle = findFileHandle(fsTree, activeTab.path)
+          if (fileHandle) {
+            const ok = await writeLocalFile(fileHandle, fileContent)
+            if (ok) { console.log('File saved to local disk'); return }
+          }
+        } catch {}
+      }
+      // Try WebSocket next
       try {
         const { wsFileAction } = await import('@/lib/ws-file-client')
         const result = await wsFileAction('SAVE_FILE', activeTab.path, fileContent)
@@ -293,16 +341,27 @@ export default function IDEPage() {
   const handleNewFile = useCallback(async () => {
     const name = prompt('Enter new file name:')
     if (!name) return
+    // Try File System Access API first
+    if (fsRootHandle && fsTree.length > 0) {
+      try {
+        const dirHandle = findDirHandleByPath(fsTree, fileTreePath || fsRootHandle.name) || fsRootHandle
+        await createLocalResource(dirHandle, name, 'file')
+        const updatedTree = await mapLocalDirectory(fsRootHandle, fsRootHandle.name)
+        setFsTree(updatedTree)
+        handleRefreshFileTree()
+        const filePath = fileTreePath ? `${fileTreePath}/${name}` : name
+        handleSelectFile(filePath)
+        return
+      } catch {}
+    }
     const root = fileTreePath || '/home/dentaldiamondhn/diamond-link-original'
     const targetPath = `${root}/${name}`.replace(/\/+/g, '/')
     try {
-      // Try WebSocket first
       try {
         const { wsFileAction } = await import('@/lib/ws-file-client')
         const result = await wsFileAction('CREATE_FILE', targetPath)
         if (result) { handleRefreshFileTree(); handleSelectFile(targetPath); return }
       } catch {}
-      // Fall back to HTTP API
       const res = await fetch('/api/files/action', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -318,21 +377,30 @@ export default function IDEPage() {
     } catch (err: any) {
       alert(`Failed to create file: ${err.message}`)
     }
-  }, [fileTreePath, handleRefreshFileTree, handleSelectFile])
+  }, [fileTreePath, fsRootHandle, fsTree, handleRefreshFileTree, handleSelectFile])
 
   const handleNewFolder = useCallback(async () => {
     const name = prompt('Enter new folder name:')
     if (!name) return
+    // Try File System Access API first
+    if (fsRootHandle && fsTree.length > 0) {
+      try {
+        const dirHandle = findDirHandleByPath(fsTree, fileTreePath || fsRootHandle.name) || fsRootHandle
+        await createLocalResource(dirHandle, name, 'directory')
+        const updatedTree = await mapLocalDirectory(fsRootHandle, fsRootHandle.name)
+        setFsTree(updatedTree)
+        handleRefreshFileTree()
+        return
+      } catch {}
+    }
     const root = fileTreePath || '/home/dentaldiamondhn/diamond-link-original'
     const targetPath = `${root}/${name}`.replace(/\/+/g, '/')
     try {
-      // Try WebSocket first
       try {
         const { wsFileAction } = await import('@/lib/ws-file-client')
         const result = await wsFileAction('CREATE_FOLDER', targetPath)
         if (result) { handleRefreshFileTree(); return }
       } catch {}
-      // Fall back to HTTP API
       const res = await fetch('/api/files/action', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -347,7 +415,7 @@ export default function IDEPage() {
     } catch (err: any) {
       alert(`Failed to create folder: ${err.message}`)
     }
-  }, [fileTreePath, handleRefreshFileTree])
+  }, [fileTreePath, fsRootHandle, fsTree, handleRefreshFileTree])
 
   return (
     <div className="h-screen w-screen flex flex-col bg-neutral-950 text-zinc-200 overflow-hidden select-none">
@@ -409,7 +477,7 @@ export default function IDEPage() {
                         onSkillChange={setSelectedSkill}
                       />
                     ) : (
-                      settingsLoaded && <FileTree key={fileTreeKey} startPath={fileTreePath} activeFilePath={activeTabContent?.path || null} onFileSelect={handleSelectFile} onRefresh={handleRefreshFileTree} lintResults={lintResults} />
+                      settingsLoaded && <FileTree key={fileTreeKey} startPath={fileTreePath} activeFilePath={activeTabContent?.path || null} onFileSelect={handleSelectFile} onRefresh={handleRefreshFileTree} lintResults={lintResults} fsRootHandle={fsRootHandle} fsTree={fsTree} onFsTreeChange={setFsTree} />
                     )}
                   </div>
                 </Panel>
