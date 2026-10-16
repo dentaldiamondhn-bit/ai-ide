@@ -542,106 +542,61 @@ async function executeTool(name: string, args: Record<string, unknown>, workspac
 }
 
 const NVIDIA_MODEL_CONFIG: Record<string, { envKey: string; supportsTools: boolean; payload?: Record<string, any> }> = {
-  'minimaxai/minimax-m3': {
-    envKey: 'NVIDIA_API_KEY_MINIMAX',
+  'poolside/laguna-xs-2.1': {
+    envKey: 'NVIDIA_API_KEY_POOLSIDE',
     supportsTools: true,
-    payload: { max_tokens: 8192, temperature: 1.0, top_p: 0.95 },
+    payload: { max_tokens: 8192, temperature: 1, top_p: 0.95 },
   },
-  'z-ai/glm-5.2': {
-    envKey: 'NVIDIA_API_KEY_GLM',
+  'z-ai/glm-5.3': {
+    envKey: 'NVIDIA_API_KEY_GLM_5_3',
     supportsTools: true,
-    payload: { max_tokens: 16384, temperature: 1, top_p: 1, seed: 42 },
+    payload: { max_tokens: 8192, temperature: 1, top_p: 0.95 },
+  },
+  'z-ai/glm-5.3-flash': {
+    envKey: 'NVIDIA_API_KEY_GLM_5_3_FLASH',
+    supportsTools: true,
+    payload: { max_tokens: 8192, temperature: 1, top_p: 0.95 },
   },
   'nvidia/nemotron-3-ultra-550b-a55b': {
-    envKey: 'NVIDIA_API_KEY_NEMOTRON',
+    envKey: 'NVIDIA_API_KEY_NEMOTRON_ULTRA',
     supportsTools: true,
-    payload: { max_tokens: 16384, temperature: 1, top_p: 0.95, reasoning_budget: 16384, chat_template_kwargs: { enable_thinking: true } },
+    payload: { max_tokens: 16384, temperature: 1, top_p: 0.95, chat_template_kwargs: { enable_thinking: true } },
   },
-  'moonshotai/kimi-k2.6': {
-    envKey: 'NVIDIA_API_KEY_KIMI',
+  'minimaxai/minimax-m3': {
+    envKey: 'NVIDIA_API_KEY_MINIMAX_M3',
     supportsTools: true,
-    payload: { max_tokens: 16384, temperature: 1.0, top_p: 1.0 },
-  },
-  'mistralai/mistral-medium-3.5-128b': {
-    envKey: 'NVIDIA_API_KEY_MISTRAL_MEDIUM',
-    supportsTools: true,
-    payload: { max_tokens: 16384, temperature: 0.70, top_p: 1.0, reasoning_effort: 'high' },
+    payload: { max_tokens: 8192, temperature: 1, top_p: 0.95 },
   },
   'stepfun-ai/step-3.7-flash': {
-    envKey: 'NVIDIA_API_KEY_STEP',
+    envKey: 'NVIDIA_API_KEY_STEP_37',
     supportsTools: true,
-    payload: { max_tokens: 16384, temperature: 1.0, top_p: 0.95 },
+    payload: { max_tokens: 16384, temperature: 1, top_p: 0.95, seed: 42 },
   },
-  'deepseek-ai/deepseek-v4-flash': {
-    envKey: 'NVIDIA_API_KEY_DEEPSEEK_FLASH',
+  'deepseek-ai/deepseek-v4-flash-0731': {
+    envKey: 'NVIDIA_API_KEY_DEEPSEEK_0731',
     supportsTools: true,
     payload: { max_tokens: 16384, temperature: 1, top_p: 0.95, chat_template_kwargs: { thinking: true, reasoning_effort: 'high' } },
   },
-  'deepseek-ai/deepseek-v4-pro': {
-    envKey: 'NVIDIA_API_KEY_DEEPSEEK_PRO',
+  'google/gemma-4-31b-it': {
+    envKey: 'NVIDIA_API_KEY_GEMMA_4',
     supportsTools: true,
-    payload: { max_tokens: 16384, temperature: 1, top_p: 0.95, chat_template_kwargs: { thinking: false } },
+    payload: { max_tokens: 16384, temperature: 1, top_p: 0.95, chat_template_kwargs: { enable_thinking: true } },
   },
-  'mistralai/mixtral-8x7b-instruct-v0.1': {
-    envKey: 'NVIDIA_API_KEY_MIXTRAL',
-    supportsTools: false,
-    payload: { max_tokens: 1024, temperature: 0.5, top_p: 1 },
-  },
-  'meta/llama-3.2-1b-instruct': {
-    envKey: 'NVIDIA_API_KEY_LLAMA32_1B',
-    supportsTools: false,
-    payload: { max_tokens: 1024, temperature: 0.2, top_p: 0.7 },
-  },
-  'meta/llama-3.1-70b-instruct': {
-    envKey: 'NVIDIA_API_KEY_LLAMA31_70B',
+  'nvidia/nemotron-3-super-120b-a12b': {
+    envKey: 'NVIDIA_API_KEY_NEMOTRON_SUPER',
     supportsTools: true,
-    payload: { max_tokens: 1024, temperature: 0.2, top_p: 0.7 },
-  },
-  'qwen/qwen3.5-122b-a10b': {
-    envKey: 'NVIDIA_API_KEY_QWEN35',
-    supportsTools: true,
-    payload: { max_tokens: 16384, temperature: 0.60, top_p: 0.95 },
-  },
-  'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning': {
-    envKey: 'NVIDIA_API_KEY_NEMOTRON_NANO',
-    supportsTools: true,
-    payload: { max_tokens: 65536, temperature: 0.6, top_p: 0.95, reasoning_budget: 16384, chat_template_kwargs: { enable_thinking: true } },
-  },
-  'stepfun-ai/step-3.5-flash': {
-    envKey: 'NVIDIA_API_KEY_STEP_35',
-    supportsTools: true,
-    payload: { max_tokens: 16384, temperature: 1, top_p: 0.9 },
+    payload: { max_tokens: 16384, temperature: 1, top_p: 0.95, chat_template_kwargs: { enable_thinking: true } },
   },
   'mistralai/mistral-nemotron': {
     envKey: 'NVIDIA_API_KEY_MISTRAL_NEMOTRON',
     supportsTools: false,
     payload: { max_tokens: 4096, temperature: 0.6, top_p: 0.7 },
   },
-  'nvidia/nemotron-ocr-v2': {
-    envKey: 'NVIDIA_API_KEY_NEMOTRON_OCR',
-    supportsTools: false,
-    payload: { max_tokens: 4096, temperature: 0.6, top_p: 0.7 },
-  },
-  'nvidia/chatterbox-multilingual-tts': {
-    envKey: 'NVIDIA_API_KEY_CHATTERBOX_TTS',
-    supportsTools: false,
-    payload: { max_tokens: 4096 },
-  },
-  'qwen/qwen-image': {
-    envKey: 'NVIDIA_API_KEY_QWEN_IMAGE',
-    supportsTools: false,
-    payload: { max_tokens: 4096 },
-  },
-  'qwen/qwen-image-edit': {
-    envKey: 'NVIDIA_API_KEY_QWEN_IMAGE_EDIT',
-    supportsTools: false,
-    payload: { max_tokens: 4096 },
-  },
 }
 
 async function callNVIDIA(messages: any[], forceTools?: boolean, skillInject?: string, modelId?: string) {
-  const mid = modelId || 'minimaxai/minimax-m3'
-  const cfg = NVIDIA_MODEL_CONFIG[mid] || NVIDIA_MODEL_CONFIG['minimaxai/minimax-m3']
+  const mid = modelId || 'poolside/laguna-xs-2.1'
+  const cfg = NVIDIA_MODEL_CONFIG[mid] || NVIDIA_MODEL_CONFIG['poolside/laguna-xs-2.1']
   const apiKey = process.env[cfg.envKey]
   if (!apiKey) throw new Error(`No API key for model ${mid} (expected env ${cfg.envKey})`)
 
@@ -699,8 +654,8 @@ async function callLLM(messages: any[], skillInject?: string, modelId?: string) 
 }
 
 async function streamNVIDIA(messages: any[], skillInject: string | undefined, modelId: string | undefined, onToken: (text: string) => void): Promise<{ content: string; toolCalls: any[] }> {
-  const mid = modelId || 'minimaxai/minimax-m3'
-  const cfg = NVIDIA_MODEL_CONFIG[mid] || NVIDIA_MODEL_CONFIG['minimaxai/minimax-m3']
+  const mid = modelId || 'poolside/laguna-xs-2.1'
+  const cfg = NVIDIA_MODEL_CONFIG[mid] || NVIDIA_MODEL_CONFIG['poolside/laguna-xs-2.1']
   const apiKey = process.env[cfg.envKey]
   if (!apiKey) throw new Error(`No API key for model ${mid}`)
 

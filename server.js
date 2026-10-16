@@ -6,7 +6,7 @@ const path = require('path')
 const url = require('url')
 const os = require('os')
 
-const WS_PORT = process.env.NEXT_PUBLIC_WS_PORT || 3002
+const WS_PORT = process.env.NEXT_PUBLIC_WS_PORT || 3003
 const wss = new WebSocket.Server({ port: Number(WS_PORT) })
 
 const SKIP_DIRS = ['node_modules', '.git', '.next', 'dist', 'out', '.idea', '.vscode']

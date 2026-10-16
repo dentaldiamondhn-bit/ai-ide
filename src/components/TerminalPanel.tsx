@@ -110,7 +110,7 @@ export default function TerminalPanel({ cwd, lintResults }: TerminalPanelProps) 
     setShells(prev => [...prev, newShell])
     setActiveShellId(id)
 
-    const wsPort = process.env.NEXT_PUBLIC_WS_PORT || '3002'
+const wsPort = process.env.NEXT_PUBLIC_WS_PORT || '3003'
     const hostname = typeof window !== 'undefined' ? window.location.hostname : 'localhost'
     const wsProtocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss' : 'ws'
     const cwdParam = cwdPath ? `?cwd=${encodeURIComponent(cwdPath)}` : ''
@@ -291,7 +291,7 @@ export default function TerminalPanel({ cwd, lintResults }: TerminalPanelProps) 
       const shell = shells.find(s => s.id === activeShellId)
       if (shell?.ws) shell.ws.close()
       setShells(prev => prev.map(s => s.id === activeShellId ? { ...s, output: '', connected: false, ws: null } : s))
-      const wsPort = process.env.NEXT_PUBLIC_WS_PORT || '3002'
+const wsPort = process.env.NEXT_PUBLIC_WS_PORT || '3003'
       const hostname = typeof window !== 'undefined' ? window.location.hostname : 'localhost'
       const wsProtocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss' : 'ws'
       const cwdParam = cwd ? `?cwd=${encodeURIComponent(cwd)}` : ''

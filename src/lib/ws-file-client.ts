@@ -7,9 +7,9 @@ const pending = new Map<string, { resolve: (v: any) => void; reject: (e: Error) 
 
 function getWsPort(): string {
   if (typeof window !== 'undefined') {
-    return (window as any).__WS_PORT || process.env.NEXT_PUBLIC_WS_PORT || '3002'
+    return (window as any).__WS_PORT || process.env.NEXT_PUBLIC_WS_PORT || '3003'
   }
-  return '3002'
+  return '3003'
 }
 
 function ensureConnection(): Promise<void> {
