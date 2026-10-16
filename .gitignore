@@ -5,3 +5,6 @@ node_modules/
 .DS_Store
 .vercel
 .env*
+ai_models.txt
+*.nvapi*
+*.tsbuildinfo
